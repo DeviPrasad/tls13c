@@ -1,0 +1,21 @@
+[package]
+name = "tlsc"
+authors = ["dp@w3pleb.org"]
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+aes-gcm = { version = "^0.10" }
+bytes = { version = "^1.6" }
+chacha20poly1305 = {  version = "0.10.1" }
+chrono = { version = "^0.4" }
+ed25519-dalek = { version = "^2.1" }
+env_logger = { version = "^0.11" }
+hkdf = { version = "^0.12" }
+hmac = { version = "^0.12" }
+log = { version = "^0.4" }
+rand_core = { version = "0.9.0-alpha.1", features = ["getrandom"] }
+sha2 = { version = "0.10.8" }
+tokio = { version = "^1.38.0", features = ["io-util", "net", "rt", "rt-multi-thread", "macros", "time"] }
+x25519-dalek = { version = "^2.0", features = ["getrandom"] }
+aead = "0.5.2"
