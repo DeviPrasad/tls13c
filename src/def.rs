@@ -1,6 +1,15 @@
 use crate::err::Mutter;
 
+
+pub type ProtoColVersion = u16;
+
+pub type Random = [u8; 32];
+
 #[allow(dead_code)]
+// B.4. Cipher Suites. Use AES and/or CHACHA20,.
+// TlsAes128GcmSha256 (0x13, 0x01)
+// TlsAes256GcmSha384 (0x13, 0x02)
+// TLS_CHACHA20_POLY1305_SHA256 (0x13, 0x03)
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CipherSuite {
@@ -29,6 +38,7 @@ impl TryFrom<(u8, u8)> for CipherSuite {
 #[allow(dead_code)]
 pub type CipherSuiteCode = (u8, u8);
 
+
 #[allow(dead_code)]
 impl CipherSuite {
     pub fn code(&self) -> CipherSuiteCode {
@@ -39,6 +49,76 @@ impl CipherSuite {
             CipherSuite::TlsAes128CcmSha256 => (0x13, 0x04),
             CipherSuite::TlsAes128Ccm8Sha256 => (0x13, 0x05),
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CipherSuites(Vec<CipherSuite>);
+
+#[allow(dead_code)]
+impl TryFrom<Vec<CipherSuite>> for CipherSuites {
+    type Error = Mutter;
+
+    fn try_from(cipher_suites: Vec<CipherSuite>) -> Result<Self, Mutter> {
+        if !cipher_suites.is_empty() {
+            let mut cipher_suite_dup: Vec<bool> = vec![true, false, false, false, false, false];
+            for cs in cipher_suites.iter() {
+                let (_, cl) = cs.code();
+                if cipher_suite_dup[cl as usize] {
+                    return Err(Mutter::CipherDuplicate)
+                } else {
+                    cipher_suite_dup[cl as usize] = true;
+                }
+            }
+            Ok(CipherSuites(cipher_suites))
+        } else {
+            Err(Mutter::CipherSuiteLen)
+        }
+    }
+}
+
+#[allow(dead_code)]
+impl CipherSuites {
+    pub fn deserialize(bytes: &[u8]) -> Result<(CipherSuites, usize), Mutter> {
+        let mut i: usize = 0;
+        // cipher suites - len followed by identifiers; sequence of byte-pairs.
+        let cipher_suite_len: usize = ((bytes[i] as usize) << 8) | bytes[i + 1] as usize;
+        if (cipher_suite_len & 1 == 1) || !(2..=10).contains(&cipher_suite_len) {
+            return Err(Mutter::CipherSuiteLen)
+        }
+        i += 2;
+        let mut cipher_suites: Vec<CipherSuite> = vec![];
+        let mut cipher_suite_dup = [true, false, false, false, false, false];
+        for k in (0..cipher_suite_len).step_by(2) {
+            let cm = bytes[i + k];
+            let cl = bytes[i + 1 + k];
+            let cs = CipherSuite::try_from((cm, cl))?;
+            log::info!("\tcipher_suite: {cs:#?}");
+            if cipher_suite_dup[cl as usize] {
+                return Err(Mutter::CipherDuplicate)
+            } else {
+                cipher_suite_dup[cl as usize] = true;
+                cipher_suites.push(cs);
+            }
+        }
+        log::info!("\tdeserialized cipher_suites: {cipher_suites:#?}");
+        Ok((CipherSuites(cipher_suites), cipher_suite_len + 2))
+    }
+
+    pub fn serialize(&self, bytes: &mut [u8]) -> usize {
+        let cs_len = (self.0.len() * 2) as u16;
+        let mut i = 0;
+        bytes[i..i + 2].copy_from_slice(&cs_len.to_be_bytes());
+        i += 2;
+        for cs in self.0.iter() {
+            (bytes[i], bytes[i + 1]) = cs.code();
+            i += 2;
+        }
+        i
+    }
+
+    pub fn count(&self) -> usize {
+        self.0.len()
     }
 }
 

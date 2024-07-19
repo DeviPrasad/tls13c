@@ -1,7 +1,78 @@
 use crate::def::{SignatureScheme, SupportedGroup, to_u16, u16_to_u8_pair};
 use crate::err::Mutter;
 
+#[derive(Clone, Debug)]
+pub struct ClientExtensions(
+    ServerNameExt,
+    SupportedVersionExt,
+    SignatureSchemeExtensions,
+    SupportedGroupExtensions,
+    KeyShareExtensions,
+);
+
+impl TryFrom<(&str, &[SignatureScheme], &[SupportedGroup], &[KeyShare])> for ClientExtensions {
+    type Error = Mutter;
+
+    fn try_from((server_name, schemes, groups, key_shares): (&str, &[SignatureScheme], &[SupportedGroup], &[KeyShare])) -> Result<Self, Mutter> {
+        if server_name.is_empty() ||
+            schemes.is_empty() ||
+            groups.is_empty() ||
+            key_shares.is_empty() {
+            return Err(Mutter::BadInput)
+        }
+        Ok(Self(ServerNameExt::try_from(server_name)?,
+                SupportedVersionExt::new(PeerType::Client),
+                SignatureSchemeExtensions::try_from(schemes)?,
+                SupportedGroupExtensions::try_from(groups)?,
+                KeyShareExtensions::try_from((PeerType::Client, key_shares))?))
+    }
+}
+
 #[allow(dead_code)]
+impl ClientExtensions {
+    pub fn server_name_extension(&self) -> &ServerNameExt {
+        &self.0
+    }
+
+    pub fn supported_ver_extension(&self) -> &SupportedVersionExt {
+        &self.1
+    }
+
+    pub fn signature_scheme_extensions(&self) -> &SignatureSchemeExtensions {
+        &self.2
+    }
+
+    pub fn supported_group_extensions(&self) -> &SupportedGroupExtensions {
+        &self.3
+    }
+
+    pub fn key_share_extensions(&self) -> &KeyShareExtensions {
+        &self.4
+    }
+
+    pub fn size(&self) -> usize {
+        self.server_name_extension().size() +
+            self.supported_ver_extension().size() +
+            self.signature_scheme_extensions().size() +
+            self.supported_group_extensions().size() +
+            self.key_share_extensions().size()
+    }
+
+    pub fn serialize(&self, bytes: &mut [u8], pos: usize) -> usize {
+        if pos + self.size() > bytes.len() {
+            0
+        } else {
+            let mut i = pos;
+            i += self.server_name_extension().serialize(bytes, i);
+            i += self.supported_ver_extension().serialize(bytes, i);
+            i += self.signature_scheme_extensions().serialize(bytes, i);
+            i += self.supported_group_extensions().serialize(bytes, i);
+            i += self.key_share_extensions().serialize(bytes, i);
+            i - pos
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ServerNameExt {
     name: String,
@@ -11,7 +82,7 @@ pub struct ServerNameExt {
 impl TryFrom<&str> for ServerNameExt {
     type Error = Mutter;
     fn try_from(name: &str) -> Result<Self, Self::Error> {
-        if name.len() > 0 && name.len() < 32 {
+        if name.len() > 0 && name.len() < 64 {
             Ok(ServerNameExt::new(name))
         } else {
             Err(Mutter::ExtensionData)
@@ -33,12 +104,12 @@ impl ServerNameExt {
 
     pub fn serialize(&self, bytes: &mut [u8], i: usize) -> usize {
         let len = self.size();
-        if bytes.len() < len {
+        if i + len > bytes.len() {
             0
         } else {
             let n = len as u8;
             bytes[i..i + len].copy_from_slice(
-                &[[0, 0, 0, n + 5, 0, n + 3, 0, 0, n].as_slice(), self.name.as_bytes()].concat());
+                &[[0, 0, 0, n - 4, 0, n - 6, 0, 0, n - 9].as_slice(), self.name.as_bytes()].concat());
             len
         }
     }
@@ -70,7 +141,6 @@ impl ServerNameExt {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Debug, PartialEq)]
 pub enum PeerType {
     Client,
@@ -123,7 +193,7 @@ impl SupportedVersionExt {
     }
 
     pub fn serialize(&self, bytes: &mut [u8], i: usize) -> usize {
-        if bytes.len() < self.size() {
+        if bytes.len() < i + self.size() {
             0
         } else {
             if self.ctx == PeerType::Client {
@@ -136,18 +206,17 @@ impl SupportedVersionExt {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Debug)]
-pub struct KeyShareExt {
+pub struct KeyShare {
     group: SupportedGroup,
     public_key: Vec<u8>
 }
 
 #[allow(dead_code)]
-impl TryFrom<(u16, &[u8])> for KeyShareExt {
+impl TryFrom<(u16, &[u8])> for KeyShare {
     type Error = Mutter;
 
-    fn try_from((group_code, key): (u16, &[u8])) -> Result<Self, Self::Error> {
+    fn try_from((group_code, key): (u16, &[u8])) -> Result<Self, Mutter> {
         let group: SupportedGroup = group_code.try_into()?;
         if group.key_size() == key.len() {
             Ok(Self::new(group, key.into()))
@@ -158,12 +227,20 @@ impl TryFrom<(u16, &[u8])> for KeyShareExt {
 }
 
 #[allow(dead_code)]
-impl KeyShareExt {
+impl KeyShare {
     fn new(group: SupportedGroup, public_key: Vec<u8>) -> Self {
         Self {
             group,
             public_key
         }
+    }
+
+    pub fn x25519(pub_key: &[u8; 32]) -> Self {
+        Self::new(SupportedGroup::X25519, pub_key.to_vec())
+    }
+
+    pub fn secp256r1(pub_key: &[u8; 32]) -> Self {
+        Self::new(SupportedGroup::Secp256r1, pub_key.to_vec())
     }
 
     // 2 bytes for the SupportedGroup id.
@@ -198,14 +275,13 @@ impl KeyShareExt {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Debug)]
-pub struct KeyShareExtensions(PeerType, Vec<KeyShareExt>);
+pub struct KeyShareExtensions(PeerType, Vec<KeyShare>);
 
-impl TryFrom<(PeerType, &[KeyShareExt])> for KeyShareExtensions {
+impl TryFrom<(PeerType, &[KeyShare])> for KeyShareExtensions {
     type Error = Mutter;
 
-    fn try_from((ctx, key_shares): (PeerType, &[KeyShareExt])) -> Result<Self, Mutter> {
+    fn try_from((ctx, key_shares): (PeerType, &[KeyShare])) -> Result<Self, Mutter> {
         if ctx == PeerType::Server && key_shares.len() != 1 {
             Err(Mutter::BadInput)
         } else if ctx == PeerType::Client && key_shares.len() == 0 {
@@ -227,8 +303,7 @@ impl TryFrom<(PeerType, &[KeyShareExt])> for KeyShareExtensions {
 
 #[allow(dead_code)]
 impl KeyShareExtensions {
-
-    fn new(ctx: PeerType, ext: Vec<KeyShareExt>) -> Self {
+    fn new(ctx: PeerType, ext: Vec<KeyShare>) -> Self {
         Self(ctx, ext)
     }
 
@@ -240,19 +315,24 @@ impl KeyShareExtensions {
         self.0 == PeerType::Server
     }
 
-    pub fn extensions(&self) -> &[KeyShareExt] {
+    pub fn extensions(&self) -> &[KeyShare] {
         &self.1
     }
 
-    pub fn serialize(&self, bytes: &mut [u8], pos: usize) -> usize {
+    pub fn size(&self) -> usize {
         // 2 bytes for indicating key share extension + 2 bytes for the total size of the extension data
         let mut size = 4;
-        for ext in self.extensions() {
+        for key_share_ext in self.extensions() {
             // ext.size() is the number of bytes required to represent the extension data sans its length.
             // each extension needs two additional bytes to store its size/len.
-            size += ext.size() + 2;
+            size += key_share_ext.size() + 2;
         }
-        if size >= (1 << 16) - 4 || (pos + size) > bytes.len() { // each scheme takes two bytes
+        size
+    }
+
+    pub fn serialize(&self, bytes: &mut [u8], pos: usize) -> usize {
+        let size = self.size();
+        if size >= (1 << 16) - 1 || (pos + size) > bytes.len() {
             0
         } else {
             let mut i = pos;
@@ -273,15 +353,94 @@ impl KeyShareExtensions {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Debug)]
-pub struct SupportedGroupExt {}
+pub struct SupportedGroupExt(SupportedGroup);
+
+impl TryFrom<u16> for SupportedGroupExt {
+    type Error = Mutter;
+
+    fn try_from(val: u16) -> Result<Self, Mutter> {
+        Ok(Self(SupportedGroup::try_from(val)?))
+    }
+}
 
 #[allow(dead_code)]
+impl SupportedGroupExt {
+    fn new(g: SupportedGroup) -> Self {
+        Self(g)
+    }
+
+    pub fn size(&self) -> usize {
+        2
+    }
+
+    pub fn serialize(&self, bytes: &mut [u8], pos: usize) -> usize {
+        if pos + self.size() > bytes.len() {
+            0
+        } else {
+            (bytes[pos], bytes[pos + 1]) = u16_to_u8_pair(self.0 as u16);
+            2
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct SupportedGroupExtensions(Vec<SupportedGroupExt>);
 
+impl TryFrom<&[SupportedGroup]> for SupportedGroupExtensions {
+    type Error = Mutter;
+
+    fn try_from(groups: &[SupportedGroup]) -> Result<SupportedGroupExtensions, Mutter> {
+        if !groups.is_empty() {
+            let mut list_grp_ext = Vec::new();
+            let mut groups_dup: Vec<bool> = vec![true, false, false];
+            for g in groups.iter() {
+                let i = g.sln();
+                if groups_dup[i] { // this is a duplicate entry
+                    return Err(Mutter::DuplicateSupportedGroup)
+                } else {
+                    groups_dup[i] = true;
+                    list_grp_ext.push(SupportedGroupExt::new(*g));
+                }
+            }
+            Ok(SupportedGroupExtensions(list_grp_ext))
+        } else {
+            Err(Mutter::SupportedGroupLen)
+        }
+    }
+}
+
 #[allow(dead_code)]
+impl SupportedGroupExtensions {
+    pub fn supported_groups(&self) -> &[SupportedGroupExt] {
+        &self.0
+    }
+
+    pub fn size(&self) -> usize {
+        // the header needs 6 bytes: 2 for extension type + 2 for list size + 2 for data size.
+        6 + self.supported_groups().len() * 2
+    }
+
+    pub fn serialize(&self, bytes: &mut [u8], pos: usize) -> usize {
+        let len = self.supported_groups().len() * 2; // each signature scheme takes two bytes.
+        // the header needs 6 bytes: 2 for extension type + 2 for list size + 2 for data size.
+        if (pos + 6 + len) > bytes.len() {
+            0
+        } else {
+            let mut i = pos;
+            (bytes[i], bytes[i + 1]) = (0, 0x0a);
+            (bytes[i + 2], bytes[i + 3]) = u16_to_u8_pair((len + 2) as u16);
+            (bytes[i + 4], bytes[i + 5]) = u16_to_u8_pair(len as u16);
+            i += 6;
+            for ext in self.supported_groups() {
+                i += ext.serialize(bytes, i);
+            }
+            assert_eq!(i - pos, 6 + len);
+            6 + len
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct SigAlgExt {
     scheme: SignatureScheme,
@@ -320,14 +479,13 @@ impl SigAlgExt {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct SignatureSchemeExtensions(Vec<SigAlgExt>);
 
-impl TryFrom<Vec<SignatureScheme>> for SignatureSchemeExtensions {
+impl TryFrom<&[SignatureScheme]> for SignatureSchemeExtensions {
     type Error = Mutter;
 
-    fn try_from(schemes: Vec<SignatureScheme>) -> Result<Self, Self::Error> {
+    fn try_from(schemes: &[SignatureScheme]) -> Result<Self, Mutter> {
         if !schemes.is_empty() {
             let mut list_sig_alg_ext = Vec::new();
             let mut schemes_dup: Vec<bool> = vec![true, false, false, false];
@@ -353,6 +511,11 @@ impl SignatureSchemeExtensions {
         &self.0
     }
 
+    pub fn size(&self) -> usize {
+        // the header needs 6 bytes: 2 for extension type + 2 for list size + 2 for data size.
+        6 + self.schemes().len() * 2
+    }
+
     pub fn serialize(&self, bytes: &mut [u8], pos: usize) -> usize {
         let len = self.schemes().len() * 2; // each signature scheme takes two bytes.
         // the header needs 6 bytes: 2 for extension type + 2 for list size + 2 for data size.
@@ -360,9 +523,9 @@ impl SignatureSchemeExtensions {
             0
         } else {
             let mut i = pos;
-            (bytes[i], bytes[i + 2]) = (0, 0x0d);
-            (bytes[i+3], bytes[i + 4]) = u16_to_u8_pair((len + 2) as u16);
-            (bytes[i+5], bytes[i + 6]) = u16_to_u8_pair(len as u16);
+            (bytes[i], bytes[i + 1]) = (0, 0x0d);
+            (bytes[i + 2], bytes[i + 3]) = u16_to_u8_pair((len + 2) as u16);
+            (bytes[i + 4], bytes[i + 5]) = u16_to_u8_pair(len as u16);
             i += 6;
             for ext in self.schemes() {
                 i += ext.serialize(bytes, i);
@@ -376,13 +539,13 @@ impl SignatureSchemeExtensions {
 #[cfg(test)]
 mod extension_test {
     use crate::def::SupportedGroup;
-    use crate::ext::{KeyShareExt, KeyShareExtensions, PeerType};
+    use crate::ext::{KeyShare, KeyShareExtensions, PeerType};
 
     #[test]
     fn test_one_key_share() {
-        let x25519_key_ext = KeyShareExt::try_from((SupportedGroup::X25519 as u16,
-                                                    [0u8; 32].as_slice())).unwrap();
-        let key_shares: KeyShareExtensions  =
+        let x25519_key_ext = KeyShare::try_from((SupportedGroup::X25519 as u16,
+                                                 [0u8; 32].as_slice())).unwrap();
+        let key_shares: KeyShareExtensions =
             (PeerType::Client, [x25519_key_ext].as_slice()).try_into().unwrap();
         let mut buf = [0; 42];
         let copied = key_shares.serialize(buf.as_mut_slice(), 0);
@@ -394,11 +557,11 @@ mod extension_test {
 
     #[test]
     fn test_two_key_shares() {
-        let x25519_key_ext = KeyShareExt::try_from((SupportedGroup::X25519 as u16,
-                                                    [7u8; 32].as_slice())).unwrap();
-        let secp256r1_key_ext = KeyShareExt::try_from((SupportedGroup::Secp256r1 as u16,
-                                                       [19u8; 32].as_slice())).unwrap();
-        let key_shares: KeyShareExtensions  =
+        let x25519_key_ext = KeyShare::try_from((SupportedGroup::X25519 as u16,
+                                                 [7u8; 32].as_slice())).unwrap();
+        let secp256r1_key_ext = KeyShare::try_from((SupportedGroup::Secp256r1 as u16,
+                                                    [19u8; 32].as_slice())).unwrap();
+        let key_shares: KeyShareExtensions =
             (PeerType::Client, [x25519_key_ext, secp256r1_key_ext].as_slice()).try_into().unwrap();
         let mut buf = [0; 80];
         let copied = key_shares.serialize(buf.as_mut_slice(), 0);
@@ -411,6 +574,5 @@ mod extension_test {
 
         assert_eq!(buf[42..48], [0, 36, 00, 0x17, 00, 32]);
         assert_eq!(buf[48..80], [19].repeat(32));
-
     }
 }

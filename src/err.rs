@@ -23,6 +23,7 @@ pub enum Mutter {
     UnsupportedSignatureScheme = 56,
     SignatureSchemeDuplicate = 57,
     DuplicateSupportedGroup = 58,
+    SupportedGroupLen = 59,
     ExtensionData = 65,
     
     HmacBadKeyLen = 103,

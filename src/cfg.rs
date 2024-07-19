@@ -42,6 +42,13 @@ impl PeerSessionConfig {
         }
     }
 
+    pub fn your_dot_net() -> Self {
+        PeerSessionConfig::good("yourdot.net",
+                                "yourdot.net:443",
+                                &[SupportedGroup::X25519],
+                                &[SignatureScheme::Ed25519, SignatureScheme::RsaPssRsaeSha256])
+    }
+    
     pub fn microsoft() -> Self {
         PeerSessionConfig::good("microsoft.com",
                                 "microsoft.com:443",
@@ -70,6 +77,20 @@ impl PeerSessionConfig {
                                 &[SignatureScheme::Ed25519, SignatureScheme::RsaPssRsaeSha256])
     }
 
+    pub fn stack_exchange() -> Self {
+        PeerSessionConfig::good("stackexchange.com",
+                                "stackexchange.com:443",
+                                &[SupportedGroup::X25519],
+                                &[SignatureScheme::Ed25519, SignatureScheme::RsaPssRsaeSha256])
+    }
+
+    pub fn github() -> Self {
+        PeerSessionConfig::good("github.com",
+                                "github.com:443",
+                                &[SupportedGroup::X25519],
+                                &[SignatureScheme::Ed25519, SignatureScheme::EcdsaSecp256r1Sha256])
+    }
+
     pub fn x() -> Self {
         PeerSessionConfig::good("x.com",
                                 "x.com:443",
@@ -81,13 +102,69 @@ impl PeerSessionConfig {
         PeerSessionConfig::good("letsencrypt.org",
                                 "letsencrypt.org:443",
                                 &[SupportedGroup::X25519],
-                                &[SignatureScheme::Ed25519, SignatureScheme::RsaPssRsaeSha256])
+                                &[SignatureScheme::Ed25519, SignatureScheme::EcdsaSecp256r1Sha256])
     }
 
     pub fn india() -> Self {
         PeerSessionConfig::good("india.gov",
-                                "www.india.gov:443",
+                                "www.india.gov.in:443",
                                 &[SupportedGroup::X25519],
                                 &[SignatureScheme::Ed25519, SignatureScheme::RsaPssRsaeSha256])
+    }
+
+    pub fn mozilla() -> Self {
+        PeerSessionConfig::good("mozilla.org",
+                                "mozilla.org:443",
+                                &[SupportedGroup::X25519],
+                                &[SignatureScheme::Ed25519, SignatureScheme::RsaPssRsaeSha256])
+    }
+
+    pub fn usa() -> Self {
+        PeerSessionConfig::good("usa.gov",
+                                "usa.gov:443",
+                                &[SupportedGroup::X25519],
+                                &[SignatureScheme::Ed25519, SignatureScheme::RsaPssRsaeSha256])
+    }
+
+    pub fn nsa() -> Self {
+        PeerSessionConfig::good("nsa.gov",
+                                "nsa.gov:443",
+                                &[SupportedGroup::X25519],
+                                &[SignatureScheme::Ed25519, SignatureScheme::RsaPssRsaeSha256])
+    }
+
+    pub fn mitre() -> Self {
+        PeerSessionConfig::good("mitre.org",
+                                "www.mitre.org:443",
+                                &[SupportedGroup::X25519],
+                                &[SignatureScheme::Ed25519, SignatureScheme::RsaPssRsaeSha256])
+    }
+
+    pub fn lobsters() -> Self {
+        PeerSessionConfig::good("lobste.rs",
+                                "lobste.rs:443",
+                                &[SupportedGroup::X25519],
+                                &[SignatureScheme::Ed25519, SignatureScheme::RsaPssRsaeSha256])
+    }
+
+    pub fn facebook() -> Self {
+        PeerSessionConfig::good("facebook.com",
+                                "www.facebook.com:443",
+                                &[SupportedGroup::X25519],
+                                &[SignatureScheme::Ed25519, SignatureScheme::EcdsaSecp256r1Sha256])
+    }
+
+    pub fn whatsapp() -> Self {
+        PeerSessionConfig::good("whatsapp.com",
+                                "www.whatsapp.com:443",
+                                &[SupportedGroup::X25519],
+                                &[SignatureScheme::Ed25519, SignatureScheme::EcdsaSecp256r1Sha256])
+    }
+
+    pub fn meta() -> Self {
+        PeerSessionConfig::good("meta.com",
+                                "www.meta.com:443",
+                                &[SupportedGroup::X25519],
+                                &[SignatureScheme::Ed25519, SignatureScheme::EcdsaSecp256r1Sha256])
     }
 }
