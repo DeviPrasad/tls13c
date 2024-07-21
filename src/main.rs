@@ -1,13 +1,12 @@
 use std::cmp::min;
 use std::io::Write;
-
 use chrono::Local;
 use env_logger::Builder;
 use log::LevelFilter;
 
 use crate::cfg::PeerSessionConfig;
 use crate::ch::ClientHelloMsg;
-use crate::crypto::X25519KeyPair;
+use crate::crypto::{P256KeyPair, X25519KeyPair};
 use crate::ext::{ClientExtensions, KeyShare};
 use crate::session::EarlySession;
 use crate::sh::ServerHelloMsg;
@@ -44,7 +43,7 @@ pub fn init_logger(allow_test: bool) {
 
 #[tokio::main]
 async fn main() {
-    let peer = PeerSessionConfig::spacex();
+    let peer = PeerSessionConfig::ebay();
 
     init_logger(true);
     if let Ok(session) = EarlySession::with_peer(&peer).await {
@@ -53,14 +52,19 @@ async fn main() {
 
         let random: Vec<u8> = crypto::CryptoRandom::<32>::bytes().to_vec();
         let x25519_key_pair = X25519KeyPair::default();
-        let x25519_key_share = KeyShare::x25519(x25519_key_pair.public_bytes());
+        let _x25519_key_share = KeyShare::x25519(x25519_key_pair.public_bytes());
+
+        let p256_key_pair = P256KeyPair::default();
+        let p256_key_share = KeyShare::secp256r1(p256_key_pair.public_bytes().as_bytes());
 
         let extensions = ClientExtensions::try_from(
             (
                 peer.id.as_str(),
                 peer.sig_algs.as_slice(),
                 peer.dh_groups.as_slice(),
-                [x25519_key_share].as_slice()
+                [p256_key_share].as_slice()
+                // [x25519_key_share].as_slice()
+                // [p256_key_share, x25519_key_share].as_slice()
             )
         ).unwrap();
         let ch = ClientHelloMsg::try_from(
@@ -68,10 +72,10 @@ async fn main() {
             peer.cipher_suites,
             extensions
         ).unwrap();
-        // log::info!("ClientHelloMsg: {ch:?}");
+        log::info!("ClientHelloMsg: {ch:?}");
         let ch_msg_buf: &mut [u8] = &mut [0u8; 1024];
         assert!(matches!(ch.serialize(ch_msg_buf), Ok(_)));
-        // log::info!("ClientHelloMsg: {:?}", &ch_msg_buf[0..ch.size()]);
+        log::info!("ClientHelloMsg: {:?}", &ch_msg_buf[0..ch.size()]);
 
         let mut buf = [0u8; 1024 * 8];
         serv_stream.write(ch_msg_buf).await.expect("write");

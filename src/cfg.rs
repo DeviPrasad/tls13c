@@ -47,6 +47,14 @@ impl PeerSessionConfig {
         }
     }
 
+    pub fn ebay() -> Self {
+        PeerSessionConfig::good("ebay.com",
+                                "ebay.com:443",
+                                &[SupportedGroup::X25519, SupportedGroup::Secp256r1],
+                                &[SignatureScheme::Ed25519, SignatureScheme::RsaPssRsaeSha256],
+                                &[CipherSuite::TlsAes128GcmSha256])
+    }
+
     pub fn your_dot_net() -> Self {
         PeerSessionConfig::good("yourdot.net",
                                 "yourdot.net:443",
@@ -58,7 +66,7 @@ impl PeerSessionConfig {
     pub fn microsoft() -> Self {
         PeerSessionConfig::good("microsoft.com",
                                 "microsoft.com:443",
-                                &[SupportedGroup::X25519],
+                                &[SupportedGroup::Secp256r1, SupportedGroup::X25519],
                                 &[SignatureScheme::Ed25519, SignatureScheme::RsaPssRsaeSha256],
                                 &[CipherSuite::TlsAes128GcmSha256])
     }
@@ -66,7 +74,7 @@ impl PeerSessionConfig {
     pub fn spacex() -> Self {
         PeerSessionConfig::good("spacex.com",
                                 "www.spacex.com:443",
-                                &[SupportedGroup::X25519, SupportedGroup::Secp256r1],
+                                &[SupportedGroup::Secp256r1, SupportedGroup::X25519],
                                 &[SignatureScheme::EcdsaSecp256r1Sha256, SignatureScheme::RsaPssRsaeSha256],
                                 &[CipherSuite::TlsAes128GcmSha256])
     }
