@@ -65,6 +65,9 @@ impl ClientHelloMsg {
     }
 
     pub fn serialize(&self, bytes: &mut [u8]) -> Result<usize, Mutter> {
+        if self.size() > bytes.len() {
+            return Err(Mutter::SerializationBufferInsufficient)
+        }
         // first five bytes of the message hold content_type, legacy_version, and fragment_len.
         let frag_len: u16 = self.size() as u16 - 5;
         bytes[0..3].copy_from_slice(&[
@@ -101,6 +104,7 @@ impl ClientHelloMsg {
         // 53: extensions
         i += self.extensions.serialize(bytes, i);
         (bytes[k], bytes[k + 1]) = (0, (i - k - 2) as u8);
+        assert_eq!(self.size(), i);
         Ok(i)
     }
 

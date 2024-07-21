@@ -32,7 +32,7 @@ impl Stream for Transport {
             self.readable().await?;
             return match self.stream.try_read_buf(&mut buf) {
                 Ok(0) => {
-                    log::info!("stream empty!");
+                    log::info!("stream read returning with {copied} bytes.");
                     Ok(copied)
                 }
                 Ok(n) => {

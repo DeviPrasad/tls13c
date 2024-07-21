@@ -24,7 +24,15 @@ pub enum Mutter {
     SignatureSchemeDuplicate = 57,
     DuplicateSupportedGroup = 58,
     SupportedGroupLen = 59,
-    ExtensionData = 65,
+    InvalidExtensionData = 65,
+
+    InvalidRecordContentType = 81,
+    SerializationBufferInsufficient = 82,
+    DeserializationBufferInsufficient = 83,
+    UnexpectedExtension = 84,
+
+    NotTls13Record = 91,
+    NotHandshakeMessage = 93,
     
     HmacBadKeyLen = 103,
     AEADKeyLenBad = 104,
@@ -55,6 +63,13 @@ pub enum Mutter {
     MissingX25519Key = 240,
     Secp256r1NotYetSupported = 244,
     X25519KeyLenBad = 247,
+    Secp256r1KeyLenBad = 248,
 
     BadInput = 255,
+}
+
+impl<T> Into<Result<T, Mutter>> for Mutter {
+    fn into(self) -> Result<T, Mutter> {
+        Err(self)
+    }
 }

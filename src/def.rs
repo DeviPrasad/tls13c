@@ -1,7 +1,20 @@
 use crate::err::Mutter;
 
-
 pub type ProtoColVersion = u16;
+
+#[repr(u16)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum LegacyRecordVersion {
+    #[default]
+    TlsLegacyVersion03003 = 0x0303
+}
+
+#[repr(u16)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum LegacyTlsVersion {
+    #[default]
+    TlsLegacyVersion03003 = 0x0303
+}
 
 pub type Random = [u8; 32];
 
@@ -18,6 +31,13 @@ pub enum CipherSuite {
     TlsChacha20Poly1305Sha256,
     TlsAes128CcmSha256,
     TlsAes128Ccm8Sha256,
+}
+
+impl TryFrom<u16> for CipherSuite {
+    type Error = Mutter;
+    fn try_from(val: u16) -> Result<Self, Self::Error> {
+        Self::try_from(u16_to_u8_pair(val))
+    }
 }
 
 impl TryFrom<(u8, u8)> for CipherSuite {
@@ -37,7 +57,6 @@ impl TryFrom<(u8, u8)> for CipherSuite {
 
 #[allow(dead_code)]
 pub type CipherSuiteCode = (u8, u8);
-
 
 #[allow(dead_code)]
 impl CipherSuite {
@@ -133,6 +152,20 @@ pub enum RecordContentType {
     ApplicationData = 23,
 }
 
+impl TryFrom<u8> for RecordContentType {
+    type Error = Mutter;
+
+    fn try_from(val: u8) -> Result<Self, Mutter> {
+        Ok(match val {
+            20 => Self::ChangeCipherSpec,
+            21 => Self::Alert,
+            22 => Self::Handshake,
+            23 => Self::ApplicationData,
+            _ => return Err(Mutter::InvalidRecordContentType),
+        })
+    }
+}
+
 #[allow(dead_code)]
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -203,6 +236,20 @@ pub enum ExtensionTypeCode {
     Unused = 65535
 }
 
+impl Into<u16> for ExtensionTypeCode {
+    fn into(self) -> u16 {
+        self as u16
+    }
+}
+
+impl TryFrom<u16> for ExtensionTypeCode {
+    type Error = Mutter;
+
+    fn try_from(val: u16) -> Result<Self, Mutter> {
+        Self::try_from(u16_to_u8_pair(val))
+    }
+}
+
 impl TryFrom<(u8, u8)> for ExtensionTypeCode {
     type Error = Mutter;
 
@@ -214,6 +261,8 @@ impl TryFrom<(u8, u8)> for ExtensionTypeCode {
             (0, 13) => Ok(Self::SignatureAlgorithms),
             (0, 16) => Ok(Self::ApplicationLayerProtocolNegotiation),
             (0, 17) => Ok(Self::ExtendedMasterSecret),
+            (0, 19) => Ok(Self::ClientCertificateType),
+            (0, 20) => Ok(Self::ServerCertificateType),
             (0, 22) => Ok(Self::EncryptThenMAC),
             (0, 23) => Ok(Self::ExtendedMasterSecret),
             (0, 35) => Ok(Self::SessionTicket),
@@ -221,7 +270,7 @@ impl TryFrom<(u8, u8)> for ExtensionTypeCode {
             (0, 45) => Ok(Self::PskKeyExchangeModes),
             (0, 51) => Ok(Self::KeyShare),
             _ => {
-                log::error!("ExtensionType - error. Unsupported type {v}");
+                log::error!("ExtensionType - error. Unsupported type ({},{})", u, v);
                 Err(Mutter::UnsupportedExtension)
             }
         }
@@ -248,6 +297,12 @@ pub enum SupportedGroup {
     // FFDHE8192 = 0x0104,
 
     Unused = 0xFFFF,
+}
+
+impl Into<u16> for SupportedGroup {
+    fn into(self) -> u16 {
+        self as u16
+    }
 }
 
 impl TryFrom<u16> for SupportedGroup {
@@ -377,4 +432,5 @@ pub fn to_u16(h: u8, l: u8) -> u16 {
 pub fn u16_to_u8_pair(v: u16) -> (u8, u8) {
     v.to_be_bytes().into()
 }
+
 
