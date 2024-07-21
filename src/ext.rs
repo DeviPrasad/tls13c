@@ -176,7 +176,6 @@ impl SupportedVersionExt {
         }
     }
 
-
     // supported versions extension type = 0x002b.
     pub fn deserialize(ctx: PeerType, deser: &mut DeSer) -> Result<(Self, usize), Mutter> {
         if ExtensionTypeCode::SupportedVersions == ExtensionTypeCode::try_from(deser.read_u16())? {
@@ -255,20 +254,18 @@ impl KeyShare {
     }
 
     pub fn serialize(&self, bytes: &mut [u8], i: usize) -> usize {
-        if i + self.size() + 2 > bytes.len() {
+        if i + self.size() > bytes.len() {
             0
         } else {
             match self.group {
                 SupportedGroup::Secp256r1 | SupportedGroup::X25519 => {
-                    // 1. 2 bytes for storing the size of data following this field
-                    (bytes[i], bytes[i + 1]) = u16_to_u8_pair(self.size() as u16);
-                    // 2. 2 bytes for curve/group id.
-                    (bytes[i + 2], bytes[i + 3]) = u16_to_u8_pair(self.group as u16); // group id
-                    // 3. 2 bytes for the length of the key that follows
-                    (bytes[i + 4], bytes[i + 5]) = u16_to_u8_pair(self.public_key.len() as u16);
-                    // 4. bytes representing the key
-                    bytes[i + 6..i + 6 + self.public_key.len()].copy_from_slice(&self.public_key); // the key bytes
-                    2 + self.size() // 2 bytes for the initial header as shown in 1, above.
+                    // 1. 2 bytes for curve/group id.
+                    (bytes[i + 0], bytes[i + 1]) = u16_to_u8_pair(self.group as u16); // group id
+                    // 2. 2 bytes for the length of the key that follows
+                    (bytes[i + 2], bytes[i + 3]) = u16_to_u8_pair(self.public_key.len() as u16);
+                    // 3. bytes representing the key
+                    bytes[i + 4..i + 4 + self.public_key.len()].copy_from_slice(&self.public_key); // the key bytes
+                    self.size()
                 }
                 _ => return 0
             }
@@ -363,12 +360,13 @@ impl KeyShareExtensions {
     }
 
     pub fn size(&self) -> usize {
-        // 2 bytes for indicating key share extension + 2 bytes for the total size of the extension data
-        let mut size = 4;
+        // 2 bytes for indicating key share extension (0x33) +
+        // 2 bytes for the total size of the extension data +
+        // 2 bytes for the size of the list of key shares
+        let mut size = 6;
         for key_share_ext in self.extensions() {
-            // ext.size() is the number of bytes required to represent the extension data sans its length.
-            // each extension needs two additional bytes to store its size/len.
-            size += key_share_ext.size() + 2;
+            // ext.size() is the number of bytes required to represent the extension data.
+            size += key_share_ext.size();
         }
         size
     }
@@ -380,12 +378,12 @@ impl KeyShareExtensions {
         } else {
             let mut i = pos;
             (bytes[i], bytes[i + 1]) = (0, 0x33);
-            i += 2;
             // server shares only one key; client may share one or more keys.
             // client stores the size of the list of key shares that follows.
             if self.client() {
-                (bytes[i], bytes[i + 1]) = u16_to_u8_pair((size - 4) as u16);
-                i += 2;
+                (bytes[i + 2], bytes[i + 3]) = u16_to_u8_pair((size - 4) as u16);
+                (bytes[i + 4], bytes[i + 5]) = u16_to_u8_pair((size - 6) as u16);
+                i += 6;
             }
             for ext in self.extensions() {
                 i += ext.serialize(bytes, i);
@@ -603,8 +601,6 @@ impl TryFrom<Option<KeyShare>> for ServerExtensions {
 
 #[allow(dead_code)]
 impl ServerExtensions {
-
-
     // 'bytes' holds a list of extensions. The first two bytes encode the size of the list,
     pub fn deserialize(bytes: &[u8]) -> Result<(ServerExtensions, usize), Mutter> {
         if bytes.len() < size_of::<u16>() {
@@ -644,6 +640,7 @@ impl ServerExtensions {
 
 #[cfg(test)]
 mod extension_test {
+    use crate::crypto::P256KeyPair;
     use crate::def::SupportedGroup;
     use crate::ext::{KeyShare, KeyShareExtensions, PeerType};
 
@@ -665,20 +662,21 @@ mod extension_test {
     fn test_two_key_shares() {
         let x25519_key_ext = KeyShare::try_from((SupportedGroup::X25519 as u16,
                                                  [7u8; 32].as_slice())).unwrap();
-        let secp256r1_key_ext = KeyShare::try_from((SupportedGroup::Secp256r1 as u16,
-                                                    [19u8; 32].as_slice())).unwrap();
-        let key_shares: KeyShareExtensions =
-            (PeerType::Client, [x25519_key_ext, secp256r1_key_ext].as_slice()).try_into().unwrap();
-        let mut buf = [0; 80];
-        let copied = key_shares.serialize(buf.as_mut_slice(), 0);
-        assert_eq!(copied, 80);
-        assert_eq!(buf[0..2], [0, 0x33]);
-        assert_eq!(buf[2..4], [0, 76]);
+        let p256_key_pair = P256KeyPair::default();
+        let p256_key_share = KeyShare::secp256r1(p256_key_pair.public_bytes().as_bytes());
 
-        assert_eq!(buf[4..10], [0, 36, 00, 0x1d, 00, 32]);
+        let key_shares: KeyShareExtensions =
+            (PeerType::Client, [x25519_key_ext, p256_key_share].as_slice()).try_into().unwrap();
+        let mut buf = [0; 111];
+        let copied = key_shares.serialize(buf.as_mut_slice(), 0);
+        assert_eq!(copied, 111);
+        assert_eq!(buf[0..2], [0, 0x33]);
+        assert_eq!(buf[2..4], [0, 107]);
+
+        assert_eq!(buf[4..10], [0, 105, 00, 0x1D, 00, 32]);
         assert_eq!(buf[10..42], [7].repeat(32));
 
-        assert_eq!(buf[42..48], [0, 36, 00, 0x17, 00, 32]);
-        assert_eq!(buf[48..80], [19].repeat(32));
+        assert_eq!(buf[42..46], [00, 0x17, 00, 65]); // p256 public key size is 65 bytes
+        assert_eq!(&buf[46..111], p256_key_pair.public_bytes().as_bytes());
     }
 }

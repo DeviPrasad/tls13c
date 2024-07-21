@@ -1,5 +1,6 @@
 use std::cmp::min;
 use std::io::Write;
+
 use chrono::Local;
 use env_logger::Builder;
 use log::LevelFilter;
@@ -43,7 +44,7 @@ pub fn init_logger(allow_test: bool) {
 
 #[tokio::main]
 async fn main() {
-    let peer = PeerSessionConfig::ebay();
+    let peer = PeerSessionConfig::usa();
 
     init_logger(true);
     if let Ok(session) = EarlySession::with_peer(&peer).await {
@@ -52,7 +53,7 @@ async fn main() {
 
         let random: Vec<u8> = crypto::CryptoRandom::<32>::bytes().to_vec();
         let x25519_key_pair = X25519KeyPair::default();
-        let _x25519_key_share = KeyShare::x25519(x25519_key_pair.public_bytes());
+        let x25519_key_share = KeyShare::x25519(x25519_key_pair.public_bytes());
 
         let p256_key_pair = P256KeyPair::default();
         let p256_key_share = KeyShare::secp256r1(p256_key_pair.public_bytes().as_bytes());
@@ -62,9 +63,10 @@ async fn main() {
                 peer.id.as_str(),
                 peer.sig_algs.as_slice(),
                 peer.dh_groups.as_slice(),
-                [p256_key_share].as_slice()
+                // [p256_key_share].as_slice()
                 // [x25519_key_share].as_slice()
                 // [p256_key_share, x25519_key_share].as_slice()
+                [x25519_key_share, p256_key_share].as_slice()
             )
         ).unwrap();
         let ch = ClientHelloMsg::try_from(
@@ -110,7 +112,6 @@ mod tls_cl_tests {
         init_logger(true);
         let peer = PeerSessionConfig::spacex();
         if let Ok(session) = EarlySession::with_peer(&peer).await {
-            // log::info!("server_stream: {} - {}", peer.id, peer.tls_addr);
             let serv_stream = session.stream;
 
             let random: Vec<u8> = crypto::CryptoRandom::<32>::bytes().to_vec();
