@@ -55,6 +55,14 @@ impl PeerSessionConfig {
                                 &[CipherSuite::TlsAes128GcmSha256])
     }
 
+    pub fn ycombinator() -> Self {
+        PeerSessionConfig::good("ycombinator.com",
+                                "ycombinator.com:443",
+                                &[SupportedGroup::X25519, SupportedGroup::Secp256r1],
+                                &[SignatureScheme::Ed25519, SignatureScheme::RsaPssRsaeSha256],
+                                &[CipherSuite::TlsAes128GcmSha256])
+    }
+
     pub fn your_dot_net() -> Self {
         PeerSessionConfig::good("yourdot.net",
                                 "yourdot.net:443",
@@ -164,7 +172,7 @@ impl PeerSessionConfig {
                                 "www.mitre.org:443",
                                 &[SupportedGroup::X25519],
                                 &[SignatureScheme::Ed25519, SignatureScheme::RsaPssRsaeSha256],
-                                &[CipherSuite::TlsAes128GcmSha256])
+                                &[CipherSuite::TlsAes128GcmSha256, CipherSuite::TlsChacha20Poly1305Sha256])
     }
 
     pub fn lobsters() -> Self {

@@ -6,9 +6,10 @@ use crate::def::{CipherSuite,
                  LegacyTlsVersion,
                  Random,
                  RecordContentType};
+use crate::deser::DeSer;
 use crate::err::Mutter;
 use crate::ext::ServerExtensions;
-use crate::protocol::{DeSer, Protocol, Tls13Record};
+use crate::protocol::{Protocol, Tls13Record};
 
 #[allow(dead_code)]
 pub struct ServerHelloDeSer {}
@@ -46,40 +47,43 @@ pub struct ServerHelloMsg {
 
 #[allow(dead_code)]
 impl ServerHelloMsg {
-    pub fn deserialize(buf: &[u8]) -> Result<ServerHelloMsg, Mutter> {
-        if size_of::<Tls13Record>() + size_of::<u16>() > buf.len() {
+    pub fn deserialize(mut deser: &mut DeSer) -> Result<(ServerHelloMsg, usize), Mutter> {
+        if !deser.have(Tls13Record::SIZE + size_of::<u16>()) {
             return Mutter::DeserializationBufferInsufficient.into()
         }
-        let mut deser = DeSer::new(buf);
-        let rec = deser.read_tls13_handshake_record()?;
+        let rec = Tls13Record::read_handshake(&mut deser)?;
         // log::info!("ServerHelloMsg::deserialize {:#?}.", rec);
-        assert_eq!(deser.pos(), 5);
-        if HandshakeType::from(deser.read_u8()) != HandshakeType::ServerHello {
+        let sh_msg_start_cursor = deser.cursor();
+        assert_eq!(deser.cursor(), 5);
+        if HandshakeType::from(deser.ru8()) != HandshakeType::ServerHello {
             return Mutter::HandshakeType.into()
         }
-        let msg_len: u32 = deser.read_u24();
+        let msg_len: u32 = deser.ru24();
         if !(32..=Protocol::MSG_SIZE_MAX).contains(&msg_len) {
             return Mutter::MsgLen.into()
         }
+        // msg header would have consumed 4 bytes: 1 for message type and 3 for the fragment length
+        // note that record length includes the msg header too.
         assert_eq!(rec.len as u32 - 4, msg_len);
+        log::info!("ServerHelloMsg deserializer {} {msg_len}", rec.len);
+        log::info!("\n");
         if !deser.cmp_u16(Protocol::LEGACY_VER_0X0303) {
             return Mutter::LegacyTLS13MsgVer.into()
         }
         let read_server_random = |deser: &mut DeSer| {
-            deser.read_bytes(32).try_into().map_err(|_| Mutter::RandomVal)
+            deser.slice(32).try_into().map_err(|_| Mutter::RandomVal)
         };
         let random: Random = read_server_random(&mut deser)?;
-        let legacy_session_id: Vec<u8> = deser.read_session_id();
-        let cipher_suite = CipherSuite::try_from(deser.read_u16())?;
-        deser.read_empty_compression_methods()?;
+        let legacy_session_id: Vec<u8> = deser.vlu8_vec();
+        let cipher_suite = CipherSuite::try_from(deser.ru16())?;
+        let _compression_methods_ = deser.zlu8()?;
 
-        let (extensions, ext_len) = ServerExtensions::deserialize(&buf[deser.pos()..buf.len()])?;
-        // log::info!("ServerHelloMsg::deserialize extensions {:#?}.", extensions);
-        log::info!("ServerHelloMsg::deserialize complete.");
-        assert_eq!(deser.pos() + ext_len, rec.len as usize + 3);
-        Ok(ServerHelloMsg {
+        let (extensions, _) = ServerExtensions::deserialize(deser)?;
+        assert_eq!(deser.cursor() - 5, rec.len as usize);
+        Ok((ServerHelloMsg {
             rct: rec.rct,
             legacy_rec_ver: rec.ver,
+            // NOTE: this is the size of the entire HelloServer message. This is NOT msg_len!
             fragment_len: rec.len,
             ht: HandshakeType::ServerHello,
             len: msg_len,
@@ -89,7 +93,7 @@ impl ServerHelloMsg {
             cipher_suite,
             legacy_compression_method: 0,
             extensions,
-        })
+        }, sh_msg_start_cursor))
     }
 
     // sec 4.1.3 ServerHello, page 32

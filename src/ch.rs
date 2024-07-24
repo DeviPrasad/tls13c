@@ -1,6 +1,6 @@
 use crate::def::{CipherSuite, CipherSuites, HandshakeType, ProtoColVersion, Random, RecordContentType, to_u16};
 use crate::err::Mutter;
-use crate::ext::ClientExtensions;
+use crate::ext::{ClientExtensions, KeyShareExtensions};
 
 struct CompressionMethods();
 
@@ -105,7 +105,7 @@ impl ClientHelloMsg {
         i += self.extensions.serialize(bytes, i);
         (bytes[k], bytes[k + 1]) = (0, (i - k - 2) as u8);
         assert_eq!(self.size(), i);
-        Ok(i)
+        Ok(self.size())
     }
 
     pub fn try_from(random: Random, ciphers: Vec<CipherSuite>, extensions: ClientExtensions) -> Result<Self, Mutter> {
@@ -139,5 +139,9 @@ impl ClientHelloMsg {
         });
 
         res
+    }
+
+    pub fn key_shares(&self) -> KeyShareExtensions {
+        self.extensions.key_share_extensions().clone()
     }
 }

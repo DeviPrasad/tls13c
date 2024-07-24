@@ -5,6 +5,7 @@ pub enum Mutter {
     RecType = 1,
     LegacyRecordVer = 2,
     FragmentLen = 4,
+    BadVarLenVec = 5,
     LegacyTLS13MsgVer = 7,
     MsgLen = 10,
     RandomVal = 14,
@@ -30,6 +31,7 @@ pub enum Mutter {
     SerializationBufferInsufficient = 82,
     DeserializationBufferInsufficient = 83,
     UnexpectedExtension = 84,
+    ExpectingEncryptedExtensions = 85,
 
     NotTls13Record = 91,
     NotHandshakeMessage = 93,

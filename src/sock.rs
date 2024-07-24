@@ -12,8 +12,8 @@ pub(crate) type MilliSec = u64;
 
 #[allow(dead_code)]
 pub trait Stream {
-    async fn read(&self, count: usize, buf: &mut [u8]) -> Result<usize, Mutter>;
-    async fn read_timeout(&self, duration: MilliSec, count: usize, buf: &mut [u8]) -> Result<usize, Mutter>;
+    async fn read(&self, count: usize, buf: &mut Vec<u8>) -> Result<usize, Mutter>;
+    async fn read_timeout(&self, duration: MilliSec, count: usize, buf: &mut Vec<u8>) -> Result<usize, Mutter>;
     async fn write(&self, buf: &[u8]) -> Result<usize, Mutter>;
     async fn shutdown(&mut self) -> Result<(), Mutter>;
 }
@@ -26,21 +26,26 @@ pub struct Transport {
 
 #[allow(dead_code)]
 impl Stream for Transport {
-    async fn read(&self, count: usize, mut buf: &mut [u8]) -> Result<usize, Mutter> {
-        let mut copied: usize = 0;
+    async fn read(&self, count: usize, mut buf: &mut Vec<u8>) -> Result<usize, Mutter> {
+        let mut copied = 0;
+        let mut retry = 0;
         loop {
             self.readable().await?;
             return match self.stream.try_read_buf(&mut buf) {
                 Ok(0) => {
-                    log::info!("stream read returning with {copied} bytes.");
-                    Ok(copied)
+                    retry += 1;
+                    if retry < 2 {
+                        continue
+                    } else {
+                        Ok(copied)
+                    }
                 }
                 Ok(n) => {
-                    copied += n;
-                    if copied >= count {
-                        Ok(copied)
+                    if copied < count {
+                        copied += n;
+                        continue
                     } else {
-                        continue;
+                        Ok(copied)
                     }
                 }
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
@@ -54,7 +59,7 @@ impl Stream for Transport {
         }
     }
 
-    async fn read_timeout(&self, duration: MilliSec, count: usize, mut buf: &mut [u8]) -> Result<usize, Mutter> {
+    async fn read_timeout(&self, duration: MilliSec, count: usize, mut buf: &mut Vec<u8>) -> Result<usize, Mutter> {
         timeout(Duration::from_millis(duration), self.read(count, &mut buf))
             .await
             .map_err(|_| Mutter::StreamTimeout)?
