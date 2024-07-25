@@ -1,8 +1,8 @@
 use std::mem::size_of;
 
 use crate::def::{ExtensionTypeCode, SignatureScheme, SupportedGroup, to_u16, u16_to_u8_pair};
-use crate::err::Mutter;
 use crate::deser::DeSer;
+use crate::err::Mutter;
 
 #[derive(Clone, Debug)]
 pub struct ClientExtensions(

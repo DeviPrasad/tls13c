@@ -1,7 +1,6 @@
-use std::cmp::min;
 use std::io::Write;
+use std::time::UNIX_EPOCH;
 
-use chrono::Local;
 use env_logger::Builder;
 use log::LevelFilter;
 
@@ -32,13 +31,22 @@ mod deser;
 mod cert;
 mod enc_ext;
 mod key_sched;
+mod fin;
+
+fn duration_min_sec() -> String {
+    let now = std::time::SystemTime::now();
+    let dur = now.duration_since(UNIX_EPOCH).unwrap();
+    let sec = dur.as_secs();
+    let min = sec / 60;
+    format!("{:02}:{:02}", min % 60, sec % 60)
+}
 
 pub fn init_logger(allow_test: bool) {
     let _ = Builder::new()
         .format(|buf, record| {
             writeln!(buf,
-                     "{} [{}] - {}",
-                     Local::now().format("%Y-%m-%dT%H:%M:%S"),
+                     "{:?} [{}] - {}",
+                     duration_min_sec(),
                      record.level(),
                      record.args()
             )
@@ -49,12 +57,11 @@ pub fn init_logger(allow_test: bool) {
         .try_init();
 }
 
-#[tokio::main]
-async fn main() {
-    let peer = PeerSessionConfig::usa();
+fn main() {
+    let peer = PeerSessionConfig::microsoft();
 
     init_logger(true);
-    if let Ok(session) = EarlySession::with_peer(&peer).await {
+    if let Ok(session) = EarlySession::with_peer(&peer) {
         log::info!("server_stream: {} - {}", peer.id, peer.tls_addr);
         let mut serv_stream = session.stream;
 
@@ -94,17 +101,17 @@ async fn main() {
                 assert!(matches!(ch.serialize(&mut ch_data_buf), Ok(_)));
                 // log::info!("ClientHelloMsg: {:?}", &ch_data_buf[ch_buf_start + 5..ch_buf_start + ch.size()]);
 
-                serv_stream.write(&ch_data_buf[ch_buf_start..ch_buf_start + ch.size()])
-                           .await
-                           .expect("ClientHello message");
+                let n = serv_stream.write(&ch_data_buf[ch_buf_start..ch_buf_start + ch.size()])
+                    //.await
+                                   .expect("ClientHello message");
+                assert_eq!(n, ch.size());
             };
             msg_ctx.extend_from_slice(&ch_data_buf[5..ch.size()]);
         }
 
         {
-            let mut handshake_data = Vec::with_capacity(2*1024);
+            let mut handshake_data = Vec::with_capacity(2 * 1024);
             let copied_size = serv_stream.read(1024, &mut handshake_data)
-                                         .await
                                          .expect("ServerHello message");
             let (sh, sh_msg_end) = {
                 //log::info!("read {copied_size} bytes from server: {:?}", &handshake_data[0..min(14, copied_size)]);
@@ -175,7 +182,6 @@ async fn main() {
             // pass 1 - receive records arriving in a sequence of flights.
             let mut enc_msg_start = enc_data_start;
             while enc_msg_start < handshake_data.len() {
-                let ad = handshake_data[enc_msg_start..enc_msg_start + 5].to_vec();
                 let enc_msg_len = to_u16(handshake_data[enc_msg_start + 3],
                                          handshake_data[enc_msg_start + 4]) as usize;
                 let enc_msg_end = enc_msg_start + 5 + enc_msg_len;
@@ -183,7 +189,7 @@ async fn main() {
                 if enc_msg_end > handshake_data.len() {
                     log::info!("\nRefilling at least {} bytes\n", enc_msg_end - handshake_data.len());
                     serv_stream.read(enc_msg_end - handshake_data.len(), &mut handshake_data)
-                               .await
+                        //.await
                                .expect("ServerHello message");
                     log::info!("refilled. enc_msg_end = {enc_msg_end}, enc_msg_len = {enc_msg_len},  {}", handshake_data.len());
                 }
@@ -206,7 +212,9 @@ async fn main() {
         }
 
         log::info!("Done! Shutting down the connection....");
-        serv_stream.shutdown().await.expect("server shutdown");
+        serv_stream.shutdown()
+            //.await
+                   .expect("server shutdown");
     }
 }
 
@@ -227,12 +235,12 @@ mod tls_cl_tests {
     // spacex TLS looks for a P256 key share while we supply a x25519 key share in ClientHello.
     // Therefore, the server asks client to retry with a fresh ClientHello.
     // In addition, the key value will be empty on the key share extension in ServerHello.
-    #[tokio::test(flavor = "multi_thread")]
-    async fn spacex_hello_retry() {
+    #[test]
+    fn spacex_hello_retry() {
         init_logger(true);
         let peer = PeerSessionConfig::spacex();
-        if let Ok(session) = EarlySession::with_peer(&peer).await {
-            let serv_stream = session.stream;
+        if let Ok(session) = EarlySession::with_peer(&peer) {
+            let mut serv_stream = session.stream;
 
             let random: Vec<u8> = crypto::CryptoRandom::<32>::bytes().to_vec();
             let x25519_key_pair = X25519KeyPair::default();
@@ -254,9 +262,10 @@ mod tls_cl_tests {
             let mut ch_msg_buf = vec![0u8; ch.size()];
             assert!(matches!(ch.serialize(ch_msg_buf.as_mut_slice()), Ok(_)));
 
-            let mut buf = vec![0u8; 1024];
-            serv_stream.write(&ch_msg_buf).await.expect("write");
-            let res = serv_stream.read(1024, &mut buf).await;
+            let mut buf = Vec::with_capacity(2048);
+            serv_stream.write(&ch_msg_buf)
+                       .expect("write");
+            let res = serv_stream.read(1024, &mut buf); //.await;
             let copied = res.unwrap();
             let mut deser = DeSer::new(&buf[0..copied]);
             let (sh, _) = ServerHelloMsg::deserialize(&mut deser).unwrap();

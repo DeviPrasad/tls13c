@@ -403,7 +403,7 @@ mod crypto_tests {
 
     #[test]
     fn tls_aes128gcm_sha256() {
-        let res_aead = TlsAes128GcmSha256Cipher::try_from((vec![1; 12], vec![2; 16]));
+        let res_aead = TlsAes128GcmSha256Cipher::try_from((vec![2; 16], vec![1; 12]));
         assert!(matches!(res_aead, Ok(_)));
         let aead: &mut dyn TlsCipher = &mut res_aead.unwrap();
         assert!(aead.decrypt_next(&[3].repeat(12), &mut Vec::from([0].repeat(32))).is_err());
@@ -412,7 +412,7 @@ mod crypto_tests {
     #[test]
     fn tls_aes256gcm_sha384() {
         let _aes256_gcm_sha384: &dyn TlsCipherSuite = &TlsAes256GcmSha384CipherSuite::default();
-        let res_aead = TlsAes256GcmSha384Cipher::try_from((vec![1; 12], vec![2; 32]));
+        let res_aead = TlsAes256GcmSha384Cipher::try_from((vec![2; 32], vec![1; 12]));
         assert!(matches!(res_aead, Ok(_)));
         let aead = res_aead.unwrap();
         assert_eq!(aead.nonce.len(), 12);
@@ -420,7 +420,7 @@ mod crypto_tests {
 
     #[test]
     fn tls_chacha20poly1305_sha256() {
-        let res_aead = TlsChaCha20Ploy1305Cipher::try_from((vec![1; 12], vec![2; 32]));
+        let res_aead = TlsChaCha20Ploy1305Cipher::try_from((vec![2; 32], vec![1; 12]));
         assert!(matches!(res_aead, Ok(_)));
         let aead = res_aead.unwrap();
         assert_eq!(aead.key.len(), 32);
