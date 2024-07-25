@@ -7,7 +7,7 @@ use log::LevelFilter;
 use crate::cfg::PeerSessionConfig;
 use crate::ch::ClientHelloMsg;
 use crate::crypto::{P256KeyPair, X25519KeyPair};
-use crate::def::{SupportedGroup, to_u16};
+use crate::def::{HandshakeType, RecordContentType, SupportedGroup, to_u16};
 use crate::deser::DeSer;
 use crate::ext::{ClientExtensions, KeyShare};
 use crate::protocol::ChangeCipherSpecMsg;
@@ -53,14 +53,15 @@ pub fn init_logger(allow_test: bool) {
         })
         .filter(None, LevelFilter::Info)
         .is_test(!allow_test)
-        .format_timestamp_secs()
-        .try_init();
+        .try_init()
+        .expect("init_logger");
 }
 
 fn main() {
-    let peer = PeerSessionConfig::microsoft();
-
     init_logger(true);
+
+    let peer = PeerSessionConfig::whatsapp();
+
     if let Ok(session) = EarlySession::with_peer(&peer) {
         log::info!("server_stream: {} - {}", peer.id, peer.tls_addr);
         let mut serv_stream = session.stream;
@@ -102,7 +103,6 @@ fn main() {
                 // log::info!("ClientHelloMsg: {:?}", &ch_data_buf[ch_buf_start + 5..ch_buf_start + ch.size()]);
 
                 let n = serv_stream.write(&ch_data_buf[ch_buf_start..ch_buf_start + ch.size()])
-                    //.await
                                    .expect("ClientHello message");
                 assert_eq!(n, ch.size());
             };
@@ -110,9 +110,9 @@ fn main() {
         }
 
         {
-            let mut handshake_data = Vec::with_capacity(2 * 1024);
-            let copied_size = serv_stream.read(1024, &mut handshake_data)
-                                         .expect("ServerHello message");
+            let mut handshake_data = Vec::with_capacity(512);
+            let copied_size = serv_stream.read(1024, &mut handshake_data).expect("ServerHello message");
+
             let (sh, sh_msg_end) = {
                 //log::info!("read {copied_size} bytes from server: {:?}", &handshake_data[0..min(14, copied_size)]);
                 log::info!("read {copied_size} bytes from server: {}", session.peer.id);
@@ -175,7 +175,6 @@ fn main() {
                         &dh_shared_secret,
                         &msg_ctx);
                 let cipher = key_sched.server_authn_cipher(key, nonce);
-                log::info!("key schedule created!");
                 cipher
             };
 
@@ -189,7 +188,6 @@ fn main() {
                 if enc_msg_end > handshake_data.len() {
                     log::info!("\nRefilling at least {} bytes\n", enc_msg_end - handshake_data.len());
                     serv_stream.read(enc_msg_end - handshake_data.len(), &mut handshake_data)
-                        //.await
                                .expect("ServerHello message");
                     log::info!("refilled. enc_msg_end = {enc_msg_end}, enc_msg_len = {enc_msg_len},  {}", handshake_data.len());
                 }
@@ -198,22 +196,85 @@ fn main() {
 
             // pass 2 - decrypt records and collect the data in a fresh buffer for processing.
             let mut enc_msg_start = enc_data_start;
+            let mut dec_msg_buf = Vec::<u8>::new();
             while enc_msg_start < handshake_data.len() {
                 let ad = handshake_data[enc_msg_start..enc_msg_start + 5].to_vec();
-                log::info!("enc msg aad {:?}", &ad);
+                // log::info!("enc msg aad {:?}", &ad);
                 let enc_msg_len = to_u16(handshake_data[enc_msg_start + 3],
                                          handshake_data[enc_msg_start + 4]) as usize;
                 let enc_msg_end = enc_msg_start + 5 + enc_msg_len;
                 let mut dec_data_buf = (&handshake_data[enc_msg_start + 5..enc_msg_end]).to_vec();
                 cipher.decrypt_next(&ad, &mut dec_data_buf).expect("decrypt extensions");
-                log::info!("decrypted data {:?}", &dec_data_buf[0..7]);
+                // log::info!("decrypted data {:?}", &dec_data_buf[0..7]);
+                assert!(dec_data_buf.len() < handshake_data[enc_msg_start + 5..enc_msg_end].len());
+                dec_msg_buf.extend(dec_data_buf);
                 enc_msg_start = enc_msg_end;
+            }
+            assert!(dec_msg_buf.len() < enc_msg_start - enc_data_start);
+            // pass 3 - deserialize the decrypted data to correct types
+            {
+                // encrypted extensions
+                let mut s = 0;
+                let mut deser = DeSer::new(&dec_msg_buf[s..]);
+
+                assert_eq!(HandshakeType::EncryptedExtensions, deser.ru8().into());
+                let len = deser.ru24() as usize;
+                s += 4 + len;
+                deser.slice(len);
+                if deser.peek_u8() == RecordContentType::Handshake as u8 {
+                    deser.ru8();
+                    s += 1;
+                }
+                log::info!("Deserialized EncryptedExtensions");
+
+                // server's certificate
+                // let mut deser = DeSer::new(&dec_msg_buf[s..]);
+                assert_eq!(HandshakeType::Certificate, deser.ru8().into());
+                let len = deser.ru24() as usize;
+                s += 4 + len;
+                deser.slice(len);
+                if deser.peek_u8() == RecordContentType::Handshake as u8 {
+                    deser.ru8();
+                    s += 1;
+                }
+                // meta, whatsapp, and facebook, for example, encode zero-length certificate extensions.
+                if deser.peek_u16() == 0 {
+                    deser.ru16();
+                    s += 2;
+                }
+                log::info!("Deserialized Certificate");
+
+                // certificate verify
+                // log::info!("CertVerify - {:?}", &dec_msg_buf[s-8..s+16]);
+                assert_eq!(HandshakeType::CertificateVerify, deser.ru8().into());
+                let len = deser.ru24() as usize;
+                s += 4 + len;
+                deser.slice(len);
+                if deser.peek_u8() == RecordContentType::Handshake as u8 {
+                    deser.ru8();
+                    s += 1;
+                }
+                log::info!("Deserialized CertificateVerify");
+
+                // server finished
+                // let mut deser = DeSer::new(&dec_msg_buf[s..]);
+                assert_eq!(HandshakeType::Finished, deser.ru8().into());
+                let len = deser.ru24() as usize;
+                s += 4 + len;
+                deser.slice(len);
+                if deser.peek_u8() == RecordContentType::Handshake as u8 {
+                    deser.ru8();
+                    s += 1;
+                }
+                log::info!("Deserialized ServerFinished");
+
+                log::info!("{:?}", &dec_msg_buf[s..]);
+                assert_eq!(s, dec_msg_buf.len());
             }
         }
 
         log::info!("Done! Shutting down the connection....");
         serv_stream.shutdown()
-            //.await
                    .expect("server shutdown");
     }
 }
@@ -265,7 +326,7 @@ mod tls_cl_tests {
             let mut buf = Vec::with_capacity(2048);
             serv_stream.write(&ch_msg_buf)
                        .expect("write");
-            let res = serv_stream.read(1024, &mut buf); //.await;
+            let res = serv_stream.read(1024, &mut buf);
             let copied = res.unwrap();
             let mut deser = DeSer::new(&buf[0..copied]);
             let (sh, _) = ServerHelloMsg::deserialize(&mut deser).unwrap();

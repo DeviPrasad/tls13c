@@ -40,7 +40,6 @@ impl Tls13Record {
             let ct = RecordContentType::try_from(deser.peek_u8())?;
             let ver = deser.peek_u16_at(deser.cursor() + 1);
             let len = deser.peek_u16_at(deser.cursor() + 3);
-            log::info!("Tls13Record::deserialize {ct:#?} {ver} {len}");
             if Protocol::LEGACY_VER_0X0303 == ver && len > 0 {
                 Ok(Tls13Record {
                     rct: ct,

@@ -92,7 +92,7 @@ impl PeerSessionConfig {
                                 "www.google.com:443",
                                 &[SupportedGroup::X25519],
                                 &[SignatureScheme::Ed25519, SignatureScheme::RsaPssRsaeSha256],
-                                &[CipherSuite::TlsAes128GcmSha256])
+                                &[CipherSuite::TlsAes256GcmSha384])
     }
 
     pub fn apple() -> Self {
@@ -100,7 +100,7 @@ impl PeerSessionConfig {
                                 "apple.com:443",
                                 &[SupportedGroup::X25519],
                                 &[SignatureScheme::Ed25519, SignatureScheme::RsaPssRsaeSha256],
-                                &[CipherSuite::TlsAes128GcmSha256])
+                                &[CipherSuite::TlsChacha20Poly1305Sha256])
     }
 
     pub fn stack_exchange() -> Self {
@@ -132,7 +132,7 @@ impl PeerSessionConfig {
                                 "letsencrypt.org:443",
                                 &[SupportedGroup::X25519],
                                 &[SignatureScheme::Ed25519, SignatureScheme::EcdsaSecp256r1Sha256],
-                                &[CipherSuite::TlsAes128GcmSha256])
+                                &[CipherSuite::TlsAes256GcmSha384])
     }
 
     pub fn india() -> Self {
@@ -140,7 +140,7 @@ impl PeerSessionConfig {
                                 "www.india.gov.in:443",
                                 &[SupportedGroup::X25519],
                                 &[SignatureScheme::Ed25519, SignatureScheme::RsaPssRsaeSha256],
-                                &[CipherSuite::TlsAes128GcmSha256])
+                                &[CipherSuite::TlsChacha20Poly1305Sha256])
     }
 
     pub fn mozilla() -> Self {
@@ -196,7 +196,7 @@ impl PeerSessionConfig {
                                 "www.whatsapp.com:443",
                                 &[SupportedGroup::X25519],
                                 &[SignatureScheme::Ed25519, SignatureScheme::EcdsaSecp256r1Sha256],
-                                &[CipherSuite::TlsAes128GcmSha256])
+                                &[CipherSuite::TlsChacha20Poly1305Sha256])
     }
 
     pub fn meta() -> Self {
@@ -204,6 +204,6 @@ impl PeerSessionConfig {
                                 "www.meta.com:443",
                                 &[SupportedGroup::X25519],
                                 &[SignatureScheme::Ed25519, SignatureScheme::EcdsaSecp256r1Sha256],
-                                &[CipherSuite::TlsAes128GcmSha256])
+                                &[CipherSuite::TlsAes256GcmSha384])
     }
 }

@@ -52,7 +52,6 @@ impl ServerHelloMsg {
             return Mutter::DeserializationBufferInsufficient.into()
         }
         let rec = Tls13Record::read_handshake(&mut deser)?;
-        // log::info!("ServerHelloMsg::deserialize {:#?}.", rec);
         let sh_msg_start_cursor = deser.cursor();
         assert_eq!(deser.cursor(), 5);
         if HandshakeType::from(deser.ru8()) != HandshakeType::ServerHello {
@@ -65,8 +64,6 @@ impl ServerHelloMsg {
         // msg header would have consumed 4 bytes: 1 for message type and 3 for the fragment length
         // note that record length includes the msg header too.
         assert_eq!(rec.len as u32 - 4, msg_len);
-        log::info!("ServerHelloMsg deserializer {} {msg_len}", rec.len);
-        log::info!("\n");
         if !deser.cmp_u16(Protocol::LEGACY_VER_0X0303) {
             return Mutter::LegacyTLS13MsgVer.into()
         }

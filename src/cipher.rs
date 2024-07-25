@@ -373,6 +373,8 @@ pub fn tls_cipher_suite_try_from(cipher_suite: CipherSuite) -> Result<Box<dyn Tl
             Ok(Box::new(TlsAes128GcmSha256CipherSuite::default())),
         CipherSuite::TlsChacha20Poly1305Sha256 =>
             Ok(Box::new(TlsChaCha20Poly1305Sha256CipherSuite::default())),
+        CipherSuite::TlsAes256GcmSha384 =>
+            Ok(Box::new(TlsAes256GcmSha384CipherSuite::default())),
         _ => Mutter::CipherSuiteLen.into()
     }
 }

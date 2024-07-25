@@ -13,17 +13,21 @@ pub trait Stream {
 }
 
 #[derive(Debug)]
-pub struct Tls13Stream {
+pub struct TlsStream {
     stream: TcpStream,
 }
 
-impl Tls13Stream {
-    pub fn new(server: &str) -> Result<Tls13Stream, Mutter> {
+impl TlsStream {
+    pub fn new(server: &str) -> Result<TlsStream, Mutter> {
         let server_sock_addresses = server.to_socket_addrs()
                                           .map_err(|_| Mutter::BadNetworkAddress)?;
         for serv_sock_addr in server_sock_addresses {
             let sock = TcpStream::connect(serv_sock_addr)
                 .map_err(|_| Mutter::SocketPropertyError)?;
+            sock.set_read_timeout(Some(core::time::Duration::from_secs(3))).map_err(|e| {
+                log::error!("error: {e:#?}");
+                Mutter::StreamReadinessError.into()
+            })?;
             return Ok(Self {
                 stream: sock
             })
@@ -32,37 +36,32 @@ impl Tls13Stream {
     }
 }
 
-impl Stream for Tls13Stream {
-    fn read(&mut self, _count: usize, mut buf: &mut Vec<u8>) -> Result<usize, Mutter> {
-        let mut copied = 0;
-        let mut retry = 0;
-
-        let _ = self.stream.set_read_timeout(Some(core::time::Duration::from_secs(20)));
-        loop {
-            return match self.stream.read_to_end(&mut buf) {
+impl Stream for TlsStream {
+    fn read(&mut self, count: usize, mut buf: &mut Vec<u8>) -> Result<usize, Mutter> {
+        let buf_len_on_enter = buf.len();
+        loop
+        {
+            match self.stream.read_to_end(&mut buf) {
                 Ok(0) => {
-                    retry += 1;
-                    if retry < 2 {
-                        continue
-                    } else {
-                        Ok(copied)
-                    }
+                    let copied = buf.len() - buf_len_on_enter;
+                    return Ok(copied)
                 },
                 Ok(n) => {
-                    if copied < 512 {
-                        log::info!("Tls13Stream::read - {copied}");
-                        copied += n;
-                        continue
-                    } else {
-                        Ok(copied)
+                    let copied = buf.len() - buf_len_on_enter;
+                    if n == 0 || copied > count {
+                        return Ok(copied)
                     }
                 },
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    continue;
+                    let copied = buf.len() - buf_len_on_enter;
+                    if copied > count {
+                        return Ok(copied)
+                    }
+                    continue
                 }
                 Err(e) => {
                     log::error!("error: {e:#?}");
-                    Err(Mutter::StreamError)
+                    return Mutter::StreamError.into()
                 }
             }
         }
