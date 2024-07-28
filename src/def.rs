@@ -433,4 +433,21 @@ pub fn u16_to_u8_pair(v: u16) -> (u8, u8) {
     v.to_be_bytes().into()
 }
 
+/*
+pub fn u8_triple_to_u24((h, m, l): (u8, u8, u8)) -> u32 {
+    to_u24(h, m, l)
+}
+
+pub fn to_u24(h: u8, m: u8, l: u8) -> u32 {
+    (h as u32) << 16 | (m as u32) << 8 | l as u32
+}
+*/
+
+pub fn u24_to_u8_triple(v: u32) -> (u8, u8, u8) {
+    let bytes = v.to_be_bytes();
+    assert_eq!(bytes.len(), 4);
+    assert_eq!(bytes[0], 0);
+    (bytes[1], bytes[2], bytes[3])
+}
+
 

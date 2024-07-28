@@ -18,6 +18,8 @@ macro_rules! tls13c_crypto_cipher_inplace_decrypt {
             assert_eq!(self.nonce.len(), 12);
             nonce_bytes.copy_from_slice(&self.nonce);
             nonce_bytes[11] ^= self.decrypted_rec_count;
+            log::info!("decryption record  count {}", self.decrypted_rec_count);
+            log::info!("decryption nonce {:?}", &nonce_bytes);
             let nonce = Nonce::from_slice(&nonce_bytes);
             self.decrypted_rec_count += 1;
             self.cipher
@@ -30,6 +32,7 @@ macro_rules! tls13c_crypto_cipher_inplace_decrypt {
 #[allow(dead_code)]
 pub trait TlsCipher {
     fn decrypt_next(&mut self, ad: &[u8], out: &mut Vec<u8>) -> Result<(), Mutter>;
+    fn encrypt_next(&mut self, ad: &[u8], out: &mut Vec<u8>) -> Result<(), Mutter>;
 }
 
 impl TryFrom<(Vec<u8>, Vec<u8>)> for TlsAes128GcmSha256Cipher {
@@ -49,6 +52,7 @@ impl TryFrom<(Vec<u8>, Vec<u8>)> for TlsAes128GcmSha256Cipher {
                 key: *key,
                 cipher: Aes128Gcm::new(key),
                 decrypted_rec_count: 0,
+                encrypted_rec_count: 0,
             })
         }
     }
@@ -71,6 +75,7 @@ impl TryFrom<(Vec<u8>, Vec<u8>)> for TlsAes256GcmSha384Cipher {
                 key: *key,
                 cipher: Aes256Gcm::new(key),
                 decrypted_rec_count: 0,
+                encrypted_rec_count: 0,
             })
         }
     }
@@ -93,6 +98,7 @@ impl TryFrom<(Vec<u8>, Vec<u8>)> for TlsChaCha20Ploy1305Cipher {
                 key: *key,
                 cipher: ChaCha20Poly1305::new(key),
                 decrypted_rec_count: 0,
+                encrypted_rec_count: 0,
             })
         }
     }
@@ -104,10 +110,24 @@ pub struct TlsAes128GcmSha256Cipher {
     key: GenericArray<u8, U16>,
     cipher: Aes128Gcm,
     decrypted_rec_count: u8,
+    encrypted_rec_count: u8,
 }
 
 impl TlsCipher for TlsAes128GcmSha256Cipher {
     tls13c_crypto_cipher_inplace_decrypt!();
+
+    fn encrypt_next<'a>(&mut self, ad: &[u8], out: &'a mut Vec<u8>) -> Result<(), Mutter> {
+        let mut nonce_bytes: [u8; 12] = [0; 12];
+        assert_eq!(self.nonce.len(), 12);
+        nonce_bytes.copy_from_slice(&self.nonce);
+        nonce_bytes[11] ^= self.encrypted_rec_count;
+        let nonce = Nonce::from_slice(&nonce_bytes);
+        self.encrypted_rec_count += 1;
+        self.cipher
+            .encrypt_in_place(nonce, ad, out as &mut dyn aead::Buffer)
+            .map(|_| ())
+            .map_err(|_| Mutter::DecryptionFailed)
+    }
 }
 
 #[allow(dead_code)]
@@ -116,9 +136,24 @@ pub struct TlsAes256GcmSha384Cipher {
     key: GenericArray<u8, U32>,
     cipher: Aes256Gcm,
     decrypted_rec_count: u8,
+    encrypted_rec_count: u8,
 }
 impl TlsCipher for TlsAes256GcmSha384Cipher {
     tls13c_crypto_cipher_inplace_decrypt!();
+
+    fn encrypt_next(&mut self, ad: &[u8], out: &mut Vec<u8>) -> Result<(), Mutter> {
+        let mut nonce_bytes: [u8; 12] = [0; 12];
+        assert_eq!(self.nonce.len(), 12);
+        nonce_bytes.copy_from_slice(&self.nonce);
+        nonce_bytes[11] ^= self.encrypted_rec_count;
+        let nonce = Nonce::from_slice(&nonce_bytes);
+        self.encrypted_rec_count += 1;
+        self.cipher
+            .encrypt_in_place(nonce, ad, out as &mut dyn aead::Buffer)
+            // .map(|_| out as &Vec<u8>)
+            .map(|_| ())
+            .map_err(|_| Mutter::DecryptionFailed)
+    }
 }
 
 #[allow(dead_code)]
@@ -127,9 +162,24 @@ pub struct TlsChaCha20Ploy1305Cipher {
     key: GenericArray<u8, U32>,
     cipher: ChaCha20Poly1305,
     decrypted_rec_count: u8,
+    encrypted_rec_count: u8,
 }
 impl TlsCipher for TlsChaCha20Ploy1305Cipher {
     tls13c_crypto_cipher_inplace_decrypt!();
+
+    fn encrypt_next(&mut self, ad: &[u8], out: &mut Vec<u8>) -> Result<(), Mutter> {
+        let mut nonce_bytes: [u8; 12] = [0; 12];
+        assert_eq!(self.nonce.len(), 12);
+        nonce_bytes.copy_from_slice(&self.nonce);
+        nonce_bytes[11] ^= self.encrypted_rec_count;
+        let nonce = Nonce::from_slice(&nonce_bytes);
+        self.encrypted_rec_count += 1;
+        self.cipher
+            .encrypt_in_place(nonce, ad, out as &mut dyn aead::Buffer)
+            // .map(|_| out as &Vec<u8>)
+            .map(|_| ())
+            .map_err(|_| Mutter::DecryptionFailed)
+    }
 }
 
 #[allow(dead_code)]
@@ -142,6 +192,10 @@ pub trait TlsCipherSuite {
     fn nonce_len(&self) -> usize {
         12
     }
+
+    fn handshake_secret(&self) -> Vec<u8>;
+
+    fn set_hs_secret(&mut self, secret: Vec<u8>) -> bool;
 
     fn transcript_hash(&self, ctx: &[u8]) -> Vec<u8>;
 
@@ -188,33 +242,89 @@ pub trait TlsCipherSuite {
     // 'server_handshake_traffic_secret', and 'client_handshake_traffic_secret', respectively.
     // The value of 'secret' for Application Data record type is
     // 'server_application_traffic_secret' and 'client_application_traffic_secret', respectively.
-    fn derive_server_handshake_authn_secrets(&self, dh: &[u8], hello_msg_ctx: &[u8]) -> (Vec<u8>, Vec<u8>) {
+    fn derive_server_handshake_authn_secrets(&mut self, dh: &[u8], hello_msg_ctx: &[u8]) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
         let early_secret = self.hkdf_extract(
             [0].repeat(self.digest_size()).as_slice(),
             [0].repeat(self.digest_size()).as_slice());
         let salt_hs_traffic = self.derive_secret(&early_secret, "derived", &[]);
         let hs_secret = self.hkdf_extract(&salt_hs_traffic, dh);
         let server_hs_secret = self.derive_secret(&hs_secret, "s hs traffic", hello_msg_ctx);
+        self.set_hs_secret(server_hs_secret.clone());
         let server_hs_key = self.hkdf_expand_label(&server_hs_secret, "key", &[], self.key_size() as u16);
         let server_hs_iv = self.hkdf_expand_label(&server_hs_secret, "iv", &[], self.nonce_len() as u16);
-        (server_hs_key, server_hs_iv)
+        (server_hs_secret, server_hs_key, server_hs_iv)
     }
 
-    fn server_authn_cipher(&self, key: Vec<u8>, nonce: Vec<u8>) -> Box<dyn TlsCipher>;
+    fn derive_server_app_traffic_secrets(&mut self, serv_hs_secret: Vec<u8>, hello_to_serv_fin_msg_ctx: &[u8]) -> (Vec<u8>, Vec<u8>) {
+        let salt_app_data_traffic = self.derive_secret(&serv_hs_secret, "derived", &[]);
+        let master_secret = self.hkdf_extract(&salt_app_data_traffic, [0].repeat(self.digest_size()).as_slice());
+        let server_app_traffic_secret = self.derive_secret(&master_secret, "s ap traffic", hello_to_serv_fin_msg_ctx);
+        self.set_hs_secret(server_app_traffic_secret.clone());
+        let server_app_traffic_key = self.hkdf_expand_label(&server_app_traffic_secret, "key", &[], self.key_size() as u16);
+        let server_app_traffic_iv = self.hkdf_expand_label(&server_app_traffic_secret, "iv", &[], self.nonce_len() as u16);
+        (server_app_traffic_key, server_app_traffic_iv)
+    }
+
+    fn derive_client_app_traffic_secrets(&mut self, cl_hs_secret: Vec<u8>, hello_to_serv_fin_msg_ctx: &[u8]) -> (Vec<u8>, Vec<u8>) {
+        let salt_app_data_traffic = self.derive_secret(&cl_hs_secret, "derived", &[]);
+        let master_secret = self.hkdf_extract(&salt_app_data_traffic, [0].repeat(self.digest_size()).as_slice());
+        let cl_app_traffic_secret = self.derive_secret(&master_secret, "c ap traffic", hello_to_serv_fin_msg_ctx);
+        self.set_hs_secret(cl_app_traffic_secret.clone());
+        let cl_app_traffic_key = self.hkdf_expand_label(&cl_app_traffic_secret, "key", &[], self.key_size() as u16);
+        let cl_app_traffic_iv = self.hkdf_expand_label(&cl_app_traffic_secret, "iv", &[], self.nonce_len() as u16);
+        (cl_app_traffic_key, cl_app_traffic_iv)
+    }
+
+    fn derive_client_handshake_authn_secrets(&mut self, dh: &[u8], hello_msg_ctx: &[u8]) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+        let early_secret = self.hkdf_extract(
+            [0].repeat(self.digest_size()).as_slice(),
+            [0].repeat(self.digest_size()).as_slice());
+        let salt_hs_traffic = self.derive_secret(&early_secret, "derived", &[]);
+        let hs_secret = self.hkdf_extract(&salt_hs_traffic, dh);
+        let cl_hs_secret = self.derive_secret(&hs_secret, "c hs traffic", hello_msg_ctx);
+        self.set_hs_secret(cl_hs_secret.clone());
+        let cl_hs_key = self.hkdf_expand_label(&cl_hs_secret, "key", &[], self.key_size() as u16);
+        let cl_iv = self.hkdf_expand_label(&cl_hs_secret, "iv", &[], self.nonce_len() as u16);
+        (cl_hs_secret, cl_hs_key, cl_iv)
+    }
+
+    fn derive_finished_key(&self, base_key: &[u8]) -> Vec<u8> {
+        self.hkdf_expand_label(base_key, "finished", &[], self.digest_size() as u16)
+    }
+
+    // 'base_key' is 'client_hs_secret' (client_handshake_traffic_secret in sec 7.1, page 93)
+    fn derive_client_finished_verify_data(&self, base_key: &[u8], hs_ctx: &[u8]) -> Result<Vec<u8>, Mutter> {
+        let finished_key = self.derive_finished_key(base_key);
+        self.hmac(&finished_key, &self.transcript_hash(hs_ctx))
+    }
+
+    // 'base_key' is 'server_hs_secret' (server_handshake_traffic_secret in sec 7.1, page 93)
+    fn derive_server_finished_verify_data(&self, base_key: &[u8], hs_ctx: &[u8]) -> Result<Vec<u8>, Mutter> {
+        let finished_key = self.derive_finished_key(base_key);
+        self.hmac(&finished_key, &self.transcript_hash(hs_ctx))
+    }
+
+    fn server_authn_cipher(&self, key: Vec<u8>, nonce: Vec<u8>, rec_count: u8) -> Box<dyn TlsCipher>;
 }
 
 #[allow(dead_code)]
 #[derive(Clone, Debug, Default)]
-pub struct TlsAes128GcmSha256CipherSuite {}
+pub struct TlsAes128GcmSha256CipherSuite {
+    pub(crate) hs_secret: Vec<u8>,
+}
 
 #[allow(dead_code)]
 #[derive(Clone, Debug, Default)]
-pub struct TlsAes256GcmSha384CipherSuite {}
+pub struct TlsAes256GcmSha384CipherSuite {
+    pub(crate) hs_secret: Vec<u8>,
+}
 
 #[allow(dead_code)]
 #[derive(Clone, Debug, Default)]
 // pub struct TlsChacha20Poly1305Sha256Cipher {
-pub struct TlsChaCha20Poly1305Sha256CipherSuite {}
+pub struct TlsChaCha20Poly1305Sha256CipherSuite {
+    pub(crate) hs_secret: Vec<u8>,
+}
 
 #[allow(dead_code)]
 impl TlsChaCha20Poly1305Sha256CipherSuite {}
@@ -235,6 +345,17 @@ impl TlsCipherSuite for TlsChaCha20Poly1305Sha256CipherSuite {
         ChaCha20Poly1305::key_size()
     }
 
+    fn handshake_secret(&self) -> Vec<u8> {
+        assert!(self.hs_secret.len() > 0);
+        self.hs_secret.clone()
+    }
+
+    fn set_hs_secret(&mut self, secret: Vec<u8>) -> bool {
+        //assert_eq!(self.hs_secret.len(), 0);
+        self.hs_secret = secret.clone();
+        secret.len() > 0
+    }
+
     fn transcript_hash(&self, ctx: &[u8]) -> Vec<u8> {
         transcript_hash::<Sha256>(ctx)
     }
@@ -245,15 +366,15 @@ impl TlsCipherSuite for TlsChaCha20Poly1305Sha256CipherSuite {
 
     fn hkdf_extract(&self, salt: &[u8], ikm: &[u8]) -> Vec<u8> {
         let (prk, _hk) = Hkdf::<Sha256>::extract(Some(salt), ikm);
-        assert_eq!(prk.len(), 32);
+        assert_eq!(prk.len(), self.digest_size());
         assert_ne!(prk.as_slice(), [0].repeat(self.digest_size()));
         prk.to_vec()
     }
 
     fn hkdf_expand_label(&self, secret: &[u8], label: &str, ctx: &[u8], output_len: u16) -> Vec<u8> {
+        let hk = Hkdf::<Sha256>::from_prk(secret).expect("TlsChacha20Poly1305Sha256 - random secret value to be large enough");
         let (hkdf_label, hkdf_label_full_len) = self.hkdf_label(secret, label, ctx, output_len);
         let mut okm = vec![0u8; output_len as usize];
-        let hk = Hkdf::<Sha256>::from_prk(secret).expect("TlsChacha20Poly1305Sha256 - random secret value to be large enough");
         hk.expand(&hkdf_label, &mut okm).expect("TlsChacha20Poly1305Sha256 - sufficient Sha256 output length to expand");
         assert_ne!(okm, [0u8; 42]);
         assert_eq!(hkdf_label.len(), hkdf_label_full_len as usize);
@@ -267,8 +388,11 @@ impl TlsCipherSuite for TlsChaCha20Poly1305Sha256CipherSuite {
         self.hkdf_expand_label(secret, label, &hash, self.digest_size() as u16)
     }
 
-    fn server_authn_cipher(&self, key: Vec<u8>, nonce: Vec<u8>) -> Box<dyn TlsCipher> {
-        Box::new(TlsChaCha20Ploy1305Cipher::try_from((key, nonce)).unwrap())
+    fn server_authn_cipher(&self, key: Vec<u8>, nonce: Vec<u8>, rec_count: u8) -> Box<dyn TlsCipher> {
+        let mut cipher = TlsChaCha20Ploy1305Cipher::try_from((key, nonce)).unwrap();
+        cipher.decrypted_rec_count = rec_count;
+        cipher.encrypted_rec_count = 0;
+        Box::new(cipher)
     }
 }
 
@@ -280,6 +404,17 @@ impl TlsCipherSuite for TlsAes128GcmSha256CipherSuite {
 
     fn key_size(&self) -> usize {
         Aes128Gcm::key_size()
+    }
+
+    fn handshake_secret(&self) -> Vec<u8> {
+        assert!(self.hs_secret.len() > 0);
+        self.hs_secret.clone()
+    }
+
+    fn set_hs_secret(&mut self, secret: Vec<u8>) -> bool {
+        // assert_eq!(self.hs_secret.len(), 0);
+        self.hs_secret = secret.clone();
+        secret.len() > 0
     }
 
     fn transcript_hash(&self, ctx: &[u8]) -> Vec<u8> {
@@ -300,7 +435,7 @@ impl TlsCipherSuite for TlsAes128GcmSha256CipherSuite {
     fn hkdf_expand_label(&self, secret: &[u8], label: &str, ctx: &[u8], output_len: u16) -> Vec<u8> {
         let (hkdf_label, hkdf_label_full_len) = self.hkdf_label(secret, label, ctx, output_len);
         let mut okm = vec![0u8; output_len as usize];
-        let hk = Hkdf::<Sha256>::from_prk(secret).expect("TlsAes128GcmSha256 - random secret value to be large enough");
+        let hk = Hkdf::<Sha256>::from_prk(secret).expect("TlsAes128GcmSha256 - random secret value should be large enough");
         hk.expand(&hkdf_label, &mut okm).expect("TlsAes128GcmSha256 - sufficient Sha256 output length to expand");
         assert_ne!(okm, [0u8].repeat(output_len as usize));
         assert_eq!(hkdf_label.len(), hkdf_label_full_len as usize);
@@ -311,11 +446,14 @@ impl TlsCipherSuite for TlsAes128GcmSha256CipherSuite {
         let mut sha256 = Sha256::new();
         sha256.update(messages);
         let hash = sha256.finalize();
+        assert_eq!(self.digest_size(), 32);
         self.hkdf_expand_label(secret, label, &hash, self.digest_size() as u16)
     }
 
-    fn server_authn_cipher(&self, key: Vec<u8>, nonce: Vec<u8>) -> Box<dyn TlsCipher> {
-        Box::new(TlsAes128GcmSha256Cipher::try_from((key, nonce)).unwrap())
+    fn server_authn_cipher(&self, key: Vec<u8>, nonce: Vec<u8>, rec_count: u8) -> Box<dyn TlsCipher> {
+        let mut cipher = TlsAes128GcmSha256Cipher::try_from((key, nonce)).unwrap();
+        cipher.decrypted_rec_count = rec_count;
+        Box::new(cipher)
     }
 }
 
@@ -327,6 +465,17 @@ impl TlsCipherSuite for TlsAes256GcmSha384CipherSuite {
 
     fn key_size(&self) -> usize {
         Aes256Gcm::key_size()
+    }
+
+    fn handshake_secret(&self) -> Vec<u8> {
+        assert!(self.hs_secret.len() > 0);
+        self.hs_secret.clone()
+    }
+
+    fn set_hs_secret(&mut self, secret: Vec<u8>) -> bool {
+        // assert_eq!(self.hs_secret.len(), 0);
+        self.hs_secret = secret.clone();
+        secret.len() > 0
     }
 
     fn transcript_hash(&self, ctx: &[u8]) -> Vec<u8> {
@@ -361,8 +510,10 @@ impl TlsCipherSuite for TlsAes256GcmSha384CipherSuite {
         self.hkdf_expand_label(secret, label, &hash, self.digest_size() as u16)
     }
 
-    fn server_authn_cipher(&self, key: Vec<u8>, nonce: Vec<u8>) -> Box<dyn TlsCipher> {
-        Box::new(TlsAes256GcmSha384Cipher::try_from((key, nonce)).unwrap())
+    fn server_authn_cipher(&self, key: Vec<u8>, nonce: Vec<u8>, rec_count: u8) -> Box<dyn TlsCipher> {
+        let mut cipher = TlsAes256GcmSha384Cipher::try_from((key, nonce)).unwrap();
+        cipher.decrypted_rec_count = rec_count;
+        Box::new(cipher)
     }
 }
 
@@ -395,7 +546,7 @@ fn hmac_sha384(key: &[u8], data: &[u8]) -> Result<Vec<u8>, Mutter> {
 
 fn transcript_hash<D: Digest>(ctx: &[u8]) -> Vec<u8> {
     let mut digest = D::new();
-    Digest::update(&mut digest, &ctx);
+    digest.update(&ctx);
     digest.finalize().to_vec()
 }
 

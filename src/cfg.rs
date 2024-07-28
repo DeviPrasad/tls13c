@@ -84,20 +84,20 @@ impl PeerSessionConfig {
                                 "www.spacex.com:443",
                                 &[SupportedGroup::Secp256r1, SupportedGroup::X25519],
                                 &[SignatureScheme::EcdsaSecp256r1Sha256, SignatureScheme::RsaPssRsaeSha256],
-                                &[CipherSuite::TlsAes128GcmSha256])
-    }
-
-    pub fn google() -> Self {
-        PeerSessionConfig::good("google.com",
-                                "www.google.com:443",
-                                &[SupportedGroup::X25519],
-                                &[SignatureScheme::Ed25519, SignatureScheme::RsaPssRsaeSha256],
                                 &[CipherSuite::TlsAes256GcmSha384])
     }
 
+    pub fn google() -> Self {
+        PeerSessionConfig::good("www.google.com",
+                                "www.google.com:443",
+                                &[SupportedGroup::X25519],
+                                &[SignatureScheme::Ed25519, SignatureScheme::RsaPssRsaeSha256],
+                                &[CipherSuite::TlsChacha20Poly1305Sha256])
+    }
+
     pub fn apple() -> Self {
-        PeerSessionConfig::good("apple.com",
-                                "apple.com:443",
+        PeerSessionConfig::good("www.apple.com",
+                                "www.apple.com:443",
                                 &[SupportedGroup::X25519],
                                 &[SignatureScheme::Ed25519, SignatureScheme::RsaPssRsaeSha256],
                                 &[CipherSuite::TlsChacha20Poly1305Sha256])
@@ -112,8 +112,8 @@ impl PeerSessionConfig {
     }
 
     pub fn github() -> Self {
-        PeerSessionConfig::good("github.com",
-                                "github.com:443",
+        PeerSessionConfig::good("www.github.com",
+                                "www.github.com:443",
                                 &[SupportedGroup::X25519],
                                 &[SignatureScheme::Ed25519, SignatureScheme::EcdsaSecp256r1Sha256],
                                 &[CipherSuite::TlsAes128GcmSha256])
@@ -136,7 +136,7 @@ impl PeerSessionConfig {
     }
 
     pub fn india() -> Self {
-        PeerSessionConfig::good("india.gov",
+        PeerSessionConfig::good("www.india.gov",
                                 "www.india.gov.in:443",
                                 &[SupportedGroup::X25519],
                                 &[SignatureScheme::Ed25519, SignatureScheme::RsaPssRsaeSha256],
@@ -144,8 +144,8 @@ impl PeerSessionConfig {
     }
 
     pub fn mozilla() -> Self {
-        PeerSessionConfig::good("mozilla.org",
-                                "mozilla.org:443",
+        PeerSessionConfig::good("www.mozilla.org",
+                                "www.mozilla.org:443",
                                 &[SupportedGroup::X25519],
                                 &[SignatureScheme::Ed25519, SignatureScheme::RsaPssRsaeSha256],
                                 &[CipherSuite::TlsAes128GcmSha256])
@@ -184,7 +184,7 @@ impl PeerSessionConfig {
     }
 
     pub fn facebook() -> Self {
-        PeerSessionConfig::good("facebook.com",
+        PeerSessionConfig::good("www.facebook.com",
                                 "www.facebook.com:443",
                                 &[SupportedGroup::X25519],
                                 &[SignatureScheme::Ed25519, SignatureScheme::EcdsaSecp256r1Sha256],
@@ -192,7 +192,7 @@ impl PeerSessionConfig {
     }
 
     pub fn whatsapp() -> Self {
-        PeerSessionConfig::good("whatsapp.com",
+        PeerSessionConfig::good("www.whatsapp.com",
                                 "www.whatsapp.com:443",
                                 &[SupportedGroup::X25519],
                                 &[SignatureScheme::Ed25519, SignatureScheme::EcdsaSecp256r1Sha256],
@@ -200,7 +200,7 @@ impl PeerSessionConfig {
     }
 
     pub fn meta() -> Self {
-        PeerSessionConfig::good("meta.com",
+        PeerSessionConfig::good("www.meta.com",
                                 "www.meta.com:443",
                                 &[SupportedGroup::X25519],
                                 &[SignatureScheme::Ed25519, SignatureScheme::EcdsaSecp256r1Sha256],
