@@ -136,7 +136,7 @@ impl PeerSessionConfig {
     }
 
     pub fn india() -> Self {
-        PeerSessionConfig::good("www.india.gov",
+        PeerSessionConfig::good("www.india.gov.in",
                                 "www.india.gov.in:443",
                                 &[SupportedGroup::X25519],
                                 &[SignatureScheme::Ed25519, SignatureScheme::RsaPssRsaeSha256],
@@ -152,8 +152,8 @@ impl PeerSessionConfig {
     }
 
     pub fn usa() -> Self {
-        PeerSessionConfig::good("usa.gov",
-                                "usa.gov:443",
+        PeerSessionConfig::good("www.usa.gov",
+                                "www.usa.gov:443",
                                 &[SupportedGroup::X25519],
                                 &[SignatureScheme::Ed25519, SignatureScheme::RsaPssRsaeSha256],
                                 &[CipherSuite::TlsAes128GcmSha256])
@@ -205,5 +205,13 @@ impl PeerSessionConfig {
                                 &[SupportedGroup::X25519],
                                 &[SignatureScheme::Ed25519, SignatureScheme::EcdsaSecp256r1Sha256],
                                 &[CipherSuite::TlsAes256GcmSha384])
+    }
+
+    pub fn dicp() -> Self {
+        PeerSessionConfig::good("dicp.edu",
+                                "dicp.edu:443",
+                                &[SupportedGroup::X25519],
+                                &[SignatureScheme::RsaPssRsaeSha256, SignatureScheme::EcdsaSecp256r1Sha256],
+                                &[CipherSuite::TlsAes128GcmSha256])
     }
 }

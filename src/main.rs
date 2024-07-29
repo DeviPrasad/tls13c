@@ -60,7 +60,7 @@ pub fn init_logger(allow_test: bool) {
 fn main() {
     init_logger(true);
 
-    let peer = PeerSessionConfig::github();
+    let peer = PeerSessionConfig::stack_exchange();
 
     if let Ok(session) = EarlySession::with_peer(&peer) {
         log::info!("server_stream: {} - {}", peer.id, peer.tls_addr);
@@ -110,8 +110,8 @@ fn main() {
         }
 
         {
-            let mut handshake_data = Vec::with_capacity(512);
-            let copied_size = serv_stream.read(1024, &mut handshake_data).expect("ServerHello message");
+            let mut handshake_data = Vec::new();
+            let copied_size = serv_stream.read(750, &mut handshake_data).expect("ServerHello message");
 
             let (sh, sh_msg_end) = {
                 //log::info!("read {copied_size} bytes from server: {:?}", &handshake_data[0..min(14, copied_size)]);
@@ -134,8 +134,8 @@ fn main() {
                 sh_msg_end + change_cipher_spec.map_or(0, |(_, size)| size)
             };
 
-            let ((mut serv_cipher_suite, mut serv_cipher, serv_hs_secret, _serv_hs_key, _serv_hs_iv),
-                (cl_cipher_suite, mut cl_cipher, cl_hs_secret, _cl_hs_key, _cl_hs_iv)) = {
+            let ((mut serv_cipher_suite, mut serv_cipher, serv_master_hs_secret, serv_hs_secret, _serv_hs_key, _serv_hs_iv),
+                (mut cl_cipher_suite, mut cl_cipher, cl_master_hs_secret, cl_hs_secret, _cl_hs_key, _cl_hs_iv)) = {
                 // time to derive a few cryptographic secrets for handshake authentication,
                 // first, compute DH shared secret
                 let server_key_share = sh.extensions.0;
@@ -169,20 +169,20 @@ fn main() {
 
                 // time to create a key schedule before we go and grab encrypted extensions
                 let mut server_cipher_suite = cipher::tls_cipher_suite_try_from(sh.cipher_suite).unwrap();
-                let (serv_hs_secret, serv_key, serv_nonce) =
+                let (serv_master_hs_secret, serv_hs_secret, serv_key, serv_nonce) =
                     server_cipher_suite.derive_server_handshake_authn_secrets(
                         &dh_shared_secret,
                         &msg_ctx);
                 let serv_cipher = server_cipher_suite.server_authn_cipher(serv_key.clone(), serv_nonce.clone(), 0);
 
                 let mut cl_cipher_suite = cipher::tls_cipher_suite_try_from(sh.cipher_suite).unwrap();
-                let (cl_hs_secret, cl_key, cl_nonce) =
+                let (cl_master_hs_secret, cl_hs_secret, cl_key, cl_nonce) =
                     cl_cipher_suite.derive_client_handshake_authn_secrets(
                         &dh_shared_secret,
                         &msg_ctx);
                 let cl_cipher = cl_cipher_suite.server_authn_cipher(cl_key.clone(), cl_nonce.clone(), 0);
 
-                ((server_cipher_suite, serv_cipher, serv_hs_secret, serv_key, serv_nonce), (cl_cipher_suite, cl_cipher, cl_hs_secret, cl_key, cl_nonce))
+                ((server_cipher_suite, serv_cipher, serv_master_hs_secret, serv_hs_secret, serv_key, serv_nonce), (cl_cipher_suite, cl_cipher, cl_master_hs_secret, cl_hs_secret, cl_key, cl_nonce))
             };
 
             // pass 1 - receive records arriving in a sequence of flights.
@@ -240,9 +240,9 @@ fn main() {
                     }
                     log::info!("EncryptedExtensions");
                 }
+
                 let cert_ok = {
                     // server's certificate
-                    // let mut deser = DeSer::new(&dec_msg_buf[s..]);
                     assert_eq!(HandshakeType::Certificate, deser.ru8().into());
                     let len = deser.ru24() as usize;
                     let k = s;
@@ -255,7 +255,7 @@ fn main() {
                         log::info!("Certificate - ContentType = HANDSHAKE");
                     }
                     // meta, whatsapp, and facebook, for example, encode zero-length something...
-                    if deser.peek_u16() == 0 {
+                    if deser.peek_u8() == 0 && deser.peek_u16() == 0 {
                         deser.ru16();
                         s += 2;
                         log::warn!("Certificate - stray bytes? The Finished message MAC will be invalid!");
@@ -349,47 +349,57 @@ fn main() {
             }
             // send http get request
             {
-                let (key, iv) = serv_cipher_suite.derive_client_app_traffic_secrets(cl_hs_secret, &msg_ctx);
-                let mut cl_cipher = serv_cipher_suite.server_authn_cipher(key, iv, 0);
+                let (key, iv) = cl_cipher_suite.derive_client_app_traffic_secrets(cl_master_hs_secret, &msg_ctx);
+                let mut cl_cipher = cl_cipher_suite.server_authn_cipher(key, iv, 0);
                 let http_req_plaintext = format!("GET / HTTP/1.1\r\nHost: {}\r\n\r\n", peer.id).as_bytes().to_vec();
                 log::info!("HTTP request: {}", format!("GET / HTTP/1.1\r\nHost: {}\r\n\r\n", peer.id));
-                let mut tls_cipher_text = vec![0; http_req_plaintext.len() + 1 + 5 + 16];
+                log::info!("HTTP request len: {}", http_req_plaintext.len());
+                let mut tls_cipher_text = vec![0; 5];
                 tls_cipher_text[0] = RecordContentType::ApplicationData as u8;
                 (tls_cipher_text[1], tls_cipher_text[2]) = (0x03, 0x03);
-                (tls_cipher_text[3], tls_cipher_text[4]) = def::u16_to_u8_pair(http_req_plaintext.len() as u16 + 1 + 16);
-                let ad = tls_cipher_text[0..5].to_vec();
+                (tls_cipher_text[3], tls_cipher_text[4]) = def::u16_to_u8_pair(http_req_plaintext.len() as u16 + 16 + 1);
                 let mut enc_http_req = http_req_plaintext.to_vec();
                 enc_http_req.extend_from_slice(&[23]);
-                log::info!("\ninner plaintext of http req: {enc_http_req:?}");
-                cl_cipher.encrypt_next(&ad, &mut enc_http_req).expect("Finished ciphertext");
-                assert_eq!(enc_http_req.len(), http_req_plaintext.len() + 1 + 16);
-                tls_cipher_text[5..].copy_from_slice(&enc_http_req);
+                assert_eq!(enc_http_req.len(), http_req_plaintext.len()+1);
+                cl_cipher.encrypt_next(&tls_cipher_text[0..5].to_vec(),
+                                       &mut enc_http_req).expect("Finished ciphertext");
+                assert_eq!(enc_http_req.len(), http_req_plaintext.len() + 16 + 1);
+                tls_cipher_text.extend(enc_http_req);
+                assert_eq!(tls_cipher_text.len(), http_req_plaintext.len() + 16 + 5 + 1);
                 log::info!("Record of HTTP request: {:?}", &tls_cipher_text);
-                //let w = serv_stream.write(&tls_cipher_text).expect("ClientFinished message");
-                //assert_eq!(w, tls_cipher_text.len());
-                //log::info!("\nSent http req: {w:} bytes");
+                let w = serv_stream.write(&tls_cipher_text).expect("ClientFinished message");
+                assert_eq!(w, tls_cipher_text.len());
+                log::info!("\nSent http req: {w:} bytes");
             }
 
-            {
-                let mut retry = 4;
-                let mut response = Vec::new();
+            let (key, iv) = serv_cipher_suite.derive_server_app_traffic_secrets(serv_master_hs_secret, &msg_ctx);
+            let mut serv_cipher = serv_cipher_suite.server_authn_cipher(key, iv, 0);
+            let mut start = 0;
+            let mut response = Vec::new();
+            loop {
+                let mut retry = 3;
                 while retry > 0 {
-                    let n = serv_stream.read(5, &mut response).unwrap();
+                    let n = serv_stream.read(1024, &mut response).unwrap();
                     if n > 0 {
-                        log::info!("HTTP response: {retry} => {} {:?} {}", n, &response, response.len());
+                        log::info!("HTTP response: {retry} => {} {}", n, response.len());
                     }
                     retry -= 1;
                 }
                 if response.len() > 0 {
-                    let (key, iv) = serv_cipher_suite.derive_server_app_traffic_secrets(serv_hs_secret, &msg_ctx);
-                    let mut serv_cipher = serv_cipher_suite.server_authn_cipher(key, iv, 0);
-                    let len = def::to_u16(response[3], response[4]) as usize;
-                    // assert_eq!(len, 218);
-                    let ad = response[0..5].to_vec();
-                    let mut decrypted = response[5..5+len].to_vec();
-                    log::info!("ad: {:?}, {:?}....{:?}, dec_len: {}", &ad, &decrypted[0..5], &decrypted[len-5..len], decrypted.len());
-                    serv_cipher.decrypt_next(&ad, &mut decrypted).unwrap();
-                    // log::info!("decrypted server's response: {:?}", &decrypted);
+                    while start < response.len() {
+                        let len = def::to_u16(response[start + 3], response[start + 4]) as usize;
+                        if start + 5 + len < response.len() {
+                            // assert_eq!(len, 218);
+                            let ad = response[start..start + 5].to_vec();
+                            let mut decrypted = response[start + 5..start + 5 + len].to_vec();
+                            //log::info!("ad: {:?}, {:?}....{:?}, dec_len: {}", &ad, &decrypted[start..start+5], &decrypted[len-5..len], decrypted.len());
+                            serv_cipher.decrypt_next(&ad, &mut decrypted).unwrap();
+                            log::info!("{}", String::from_utf8_lossy(&decrypted));
+                            start += len + 5;
+                        } else {
+                            break;
+                        }
+                    }
                 }
             }
             log::info!("Done! Shutting down the connection....");
@@ -409,10 +419,6 @@ fn main() {
         use crate::session::EarlySession;
         use crate::sh::ServerHelloMsg;
         use crate::sock::Stream;
-
-        fn _test0() {
-            let _x: [u8; 53] = [221, 228, 75, 198, 41, 118, 163, 60, 44, 105, 3, 195, 4, 79, 22, 76, 135, 120, 252, 241, 246, 47, 242, 89, 86, 36, 188, 211, 31, 39, 17, 222, 190, 29, 68, 122, 255, 167, 239, 201, 55, 10, 94, 52, 163, 121, 158, 100, 239, 110, 118, 184, 181];
-        }
 
         // Section 4.1.4 Hello Retry Request, pages 33 and 34.
         // Checks for Hello Retry response in the ServerHello.
@@ -444,7 +450,8 @@ fn main() {
                     extensions_data
                 ).unwrap();
                 let mut ch_msg_buf = vec![0u8; ch.size()];
-                assert!(matches!(ch.serialize(ch_msg_buf.as_slice()), Ok(_)));
+                let res = ch.serialize(ch_msg_buf.as_mut_slice());
+                assert!(matches!(res, Ok(_)));
 
                 let mut buf = Vec::with_capacity(2048);
                 serv_stream.write(&ch_msg_buf)

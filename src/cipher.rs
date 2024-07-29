@@ -242,24 +242,24 @@ pub trait TlsCipherSuite {
     // 'server_handshake_traffic_secret', and 'client_handshake_traffic_secret', respectively.
     // The value of 'secret' for Application Data record type is
     // 'server_application_traffic_secret' and 'client_application_traffic_secret', respectively.
-    fn derive_server_handshake_authn_secrets(&mut self, dh: &[u8], hello_msg_ctx: &[u8]) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+    fn derive_server_handshake_authn_secrets(&mut self, dh: &[u8], hello_msg_ctx: &[u8]) -> (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>) {
         let early_secret = self.hkdf_extract(
             [0].repeat(self.digest_size()).as_slice(),
             [0].repeat(self.digest_size()).as_slice());
         let salt_hs_traffic = self.derive_secret(&early_secret, "derived", &[]);
         let hs_secret = self.hkdf_extract(&salt_hs_traffic, dh);
+        self.set_hs_secret(hs_secret.clone());
         let server_hs_secret = self.derive_secret(&hs_secret, "s hs traffic", hello_msg_ctx);
-        self.set_hs_secret(server_hs_secret.clone());
         let server_hs_key = self.hkdf_expand_label(&server_hs_secret, "key", &[], self.key_size() as u16);
         let server_hs_iv = self.hkdf_expand_label(&server_hs_secret, "iv", &[], self.nonce_len() as u16);
-        (server_hs_secret, server_hs_key, server_hs_iv)
+        (hs_secret, server_hs_secret, server_hs_key, server_hs_iv)
     }
 
     fn derive_server_app_traffic_secrets(&mut self, serv_hs_secret: Vec<u8>, hello_to_serv_fin_msg_ctx: &[u8]) -> (Vec<u8>, Vec<u8>) {
         let salt_app_data_traffic = self.derive_secret(&serv_hs_secret, "derived", &[]);
         let master_secret = self.hkdf_extract(&salt_app_data_traffic, [0].repeat(self.digest_size()).as_slice());
+        self.set_hs_secret(master_secret.clone());
         let server_app_traffic_secret = self.derive_secret(&master_secret, "s ap traffic", hello_to_serv_fin_msg_ctx);
-        self.set_hs_secret(server_app_traffic_secret.clone());
         let server_app_traffic_key = self.hkdf_expand_label(&server_app_traffic_secret, "key", &[], self.key_size() as u16);
         let server_app_traffic_iv = self.hkdf_expand_label(&server_app_traffic_secret, "iv", &[], self.nonce_len() as u16);
         (server_app_traffic_key, server_app_traffic_iv)
@@ -268,24 +268,24 @@ pub trait TlsCipherSuite {
     fn derive_client_app_traffic_secrets(&mut self, cl_hs_secret: Vec<u8>, hello_to_serv_fin_msg_ctx: &[u8]) -> (Vec<u8>, Vec<u8>) {
         let salt_app_data_traffic = self.derive_secret(&cl_hs_secret, "derived", &[]);
         let master_secret = self.hkdf_extract(&salt_app_data_traffic, [0].repeat(self.digest_size()).as_slice());
+        self.set_hs_secret(master_secret.clone());
         let cl_app_traffic_secret = self.derive_secret(&master_secret, "c ap traffic", hello_to_serv_fin_msg_ctx);
-        self.set_hs_secret(cl_app_traffic_secret.clone());
         let cl_app_traffic_key = self.hkdf_expand_label(&cl_app_traffic_secret, "key", &[], self.key_size() as u16);
         let cl_app_traffic_iv = self.hkdf_expand_label(&cl_app_traffic_secret, "iv", &[], self.nonce_len() as u16);
         (cl_app_traffic_key, cl_app_traffic_iv)
     }
 
-    fn derive_client_handshake_authn_secrets(&mut self, dh: &[u8], hello_msg_ctx: &[u8]) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+    fn derive_client_handshake_authn_secrets(&mut self, dh: &[u8], hello_msg_ctx: &[u8]) -> (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>) {
         let early_secret = self.hkdf_extract(
             [0].repeat(self.digest_size()).as_slice(),
             [0].repeat(self.digest_size()).as_slice());
         let salt_hs_traffic = self.derive_secret(&early_secret, "derived", &[]);
         let hs_secret = self.hkdf_extract(&salt_hs_traffic, dh);
+        self.set_hs_secret(hs_secret.clone());
         let cl_hs_secret = self.derive_secret(&hs_secret, "c hs traffic", hello_msg_ctx);
-        self.set_hs_secret(cl_hs_secret.clone());
         let cl_hs_key = self.hkdf_expand_label(&cl_hs_secret, "key", &[], self.key_size() as u16);
         let cl_iv = self.hkdf_expand_label(&cl_hs_secret, "iv", &[], self.nonce_len() as u16);
-        (cl_hs_secret, cl_hs_key, cl_iv)
+        (hs_secret, cl_hs_secret, cl_hs_key, cl_iv)
     }
 
     fn derive_finished_key(&self, base_key: &[u8]) -> Vec<u8> {
@@ -453,6 +453,7 @@ impl TlsCipherSuite for TlsAes128GcmSha256CipherSuite {
     fn server_authn_cipher(&self, key: Vec<u8>, nonce: Vec<u8>, rec_count: u8) -> Box<dyn TlsCipher> {
         let mut cipher = TlsAes128GcmSha256Cipher::try_from((key, nonce)).unwrap();
         cipher.decrypted_rec_count = rec_count;
+        cipher.encrypted_rec_count = 0;
         Box::new(cipher)
     }
 }
@@ -513,6 +514,7 @@ impl TlsCipherSuite for TlsAes256GcmSha384CipherSuite {
     fn server_authn_cipher(&self, key: Vec<u8>, nonce: Vec<u8>, rec_count: u8) -> Box<dyn TlsCipher> {
         let mut cipher = TlsAes256GcmSha384Cipher::try_from((key, nonce)).unwrap();
         cipher.decrypted_rec_count = rec_count;
+        cipher.encrypted_rec_count = 0;
         Box::new(cipher)
     }
 }
