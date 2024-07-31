@@ -1,7 +1,7 @@
 
 use crate::err::Mutter;
 
-#[allow(dead_code)]
+//#[allow(dead_code)]
 #[derive(Debug)]
 pub(crate) struct DeSer<'a> {
     i: usize,
@@ -42,16 +42,6 @@ impl<'a> DeSer<'a> {
         self.bytes[self.cursor()]
     }
 
-    pub fn peek_u8_at(&self, i: usize) -> u8 {
-        assert!(self.have(i));
-        self.bytes[i]
-    }
-
-    pub fn peek_u16_at(&self, i: usize) -> u16 {
-        assert!(self.have(i + 1));
-        ((self.bytes[i] as u16) << 8) | (self.bytes[i + 1] as u16)
-    }
-
     pub fn peek_u16(&self) -> u16 {
         assert!(self.cursor() + 1 < self.len());
         ((self.bytes[self.cursor()] as u16) << 8) | (self.bytes[self.cursor() + 1] as u16)
@@ -60,6 +50,26 @@ impl<'a> DeSer<'a> {
     pub fn peek_u24(&self) -> u32 {
         assert!(self.cursor() + 2 < self.len());
         ((self.bytes[self.cursor()] as u32) << 16) | ((self.bytes[self.cursor() + 1] as u32) << 8) | (self.bytes[self.cursor() + 2] as u32)
+    }
+
+    // peek a 16 bit value at (cursor + offset)
+    pub fn peek_u8_at(&self, i: usize) -> u8 {
+        assert!(self.cursor() + i < self.len());
+        self.bytes[self.cursor() + i]
+    }
+
+    // peek a 16 bit value at (cursor + offset)
+    pub fn peek_u16_at(&self, i: usize) -> u16 {
+        assert!(self.cursor() + i + 1 < self.len());
+        let j = self.cursor() + i;
+        ((self.bytes[j] as u16) << 8) | (self.bytes[j + 1] as u16)
+    }
+
+    // peek a 24 bit value at (cursor + offset)
+    pub fn peek_u24_at(&self, i: usize) -> u32 {
+        assert!(self.cursor() + i + 2 < self.len());
+        let j = self.cursor() + i;
+        ((self.bytes[j] as u32) << 16) | ((self.bytes[j+1] as u32) << 8) | (self.bytes[j + 2] as u32)
     }
 
     pub fn ru8(&mut self) -> u8 {

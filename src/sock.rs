@@ -34,6 +34,14 @@ impl TlsStream {
         }
         Err(Mutter::TlsConnection)
     }
+
+    pub fn fulfill(&mut self, required: usize, buf: &mut Vec<u8>) -> Result<usize, Mutter> {
+        let buf_len_on_entry = buf.len();
+        while buf.len() - buf_len_on_entry < required {
+            self.read(required, buf)?;
+        }
+        Ok(buf.len() - buf_len_on_entry)
+    }
 }
 
 impl Stream for TlsStream {
@@ -46,9 +54,10 @@ impl Stream for TlsStream {
                     let copied = buf.len() - buf_len_on_enter;
                     return Ok(copied)
                 },
-                Ok(n) => {
+                Ok(_n) => {
+                    assert!(_n > 0);
                     let copied = buf.len() - buf_len_on_enter;
-                    if n == 0 || copied > count {
+                    if copied > count {
                         return Ok(copied)
                     }
                 },

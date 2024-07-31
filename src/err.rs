@@ -1,5 +1,5 @@
 #[allow(dead_code)]
-#[repr(u8)]
+#[repr(u16)]
 #[derive(Clone, Debug)]
 pub enum Mutter {
     RecType = 1,
@@ -11,6 +11,7 @@ pub enum Mutter {
     RandomVal = 14,
     SessionIdLen = 19,
     CipherSuiteLen = 23,
+    UnsupportedCipherSuite = 24,
     CipherUnsupported = 28,
     CipherDuplicate = 31,
     CipherBad = 37,
@@ -32,14 +33,18 @@ pub enum Mutter {
     DeserializationBufferInsufficient = 83,
     UnexpectedExtension = 84,
     ExpectingEncryptedExtensions = 85,
+    ExpectingFinishedMsg = 86,
+    FinishMsgVerificationFailed = 87,
 
     NotTls13Record = 91,
     NotHandshakeMessage = 93,
-    
+
+    MissingInnerPlaintextContentType = 201,
+
     HmacBadKeyLen = 103,
     AEADKeyLenBad = 104,
     AEADNonceLenBad = 105,
-    BadNonce = 106,
+    BadIV = 106,
 
     DecryptionFailed = 112,
 
@@ -68,6 +73,8 @@ pub enum Mutter {
     Secp256r1KeyLenBad = 248,
 
     BadInput = 255,
+
+    InternalError = 1024,
 }
 
 impl<T> Into<Result<T, Mutter>> for Mutter {

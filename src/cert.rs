@@ -1,9 +1,20 @@
 
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
-pub struct ServerCertificate {
+pub struct ServerCertificateMsg {
 }
 
 #[allow(dead_code)]
-impl ServerCertificate {
+impl ServerCertificateMsg {
 }
+
+
+#[allow(dead_code)]
+#[derive(Clone, Debug)]
+pub struct ServerCertificateVerifyMsg {
+}
+
+#[allow(dead_code)]
+impl ServerCertificateVerifyMsg {
+}
+

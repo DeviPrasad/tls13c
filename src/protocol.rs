@@ -10,22 +10,6 @@ pub struct Tls13Record {
     pub(crate) len: u16,
 }
 
-#[derive(Debug)]
-pub struct ChangeCipherSpecMsg(());
-impl ChangeCipherSpecMsg {
-    // look for the byte sequence of length 6: <20 03 03 00 01 01>
-    pub fn deserialize(deser: &mut DeSer) -> Result<Option<(Self, usize)>, Mutter> {
-        let rec = Tls13Record::peek(deser)?;
-        if rec.rct == RecordContentType::ChangeCipherSpec &&
-            rec.len == 1 &&
-            deser.peek_u8_at(deser.cursor() + 5) == 1 {
-            deser.seek(deser.cursor() + 6);
-            Ok(Some((ChangeCipherSpecMsg(()), 6)))
-        } else {
-            return Ok(None)
-        }
-    }
-}
 
 #[allow(dead_code)]
 impl Tls13Record {
@@ -38,8 +22,8 @@ impl Tls13Record {
     pub fn peek(deser: &mut DeSer) -> Result<Tls13Record, Mutter> {
         if deser.have(deser.cursor() + 5) {
             let ct = RecordContentType::try_from(deser.peek_u8())?;
-            let ver = deser.peek_u16_at(deser.cursor() + 1);
-            let len = deser.peek_u16_at(deser.cursor() + 3);
+            let ver = deser.peek_u16_at(1);
+            let len = deser.peek_u16_at(3);
             if Protocol::LEGACY_VER_0X0303 == ver && len > 0 {
                 Ok(Tls13Record {
                     rct: ct,

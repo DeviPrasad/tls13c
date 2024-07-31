@@ -1,3 +1,4 @@
+#!/bin/bash
 
 # produce small certs of secp256r1; this is called prime256v1 in openssl
 # good for testing the handshake protocol using small buffers to read the messages.
