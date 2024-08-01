@@ -158,7 +158,7 @@ impl TlsCipher for TlsChaCha20Ploy1305Cipher {
     tls13c_crypto_cipher_inplace_encrypt!();
 }
 
-pub trait TlsKeySchedule {
+pub trait TlsCipherSuite {
     // type Aead: AeadCore + AeadInPlace + KeyInit + KeySizeUser;
     fn digest_size(&self) -> usize;
 
@@ -282,7 +282,7 @@ impl TlsAes128GcmSha256CipherSuite {}
 
 impl TlsAes256GcmSha384CipherSuite {}
 
-impl TlsKeySchedule for TlsChaCha20Poly1305Sha256CipherSuite {
+impl TlsCipherSuite for TlsChaCha20Poly1305Sha256CipherSuite {
     fn digest_size(&self) -> usize {
         <Sha256 as OutputSizeUser>::output_size()
     }
@@ -325,7 +325,7 @@ impl TlsKeySchedule for TlsChaCha20Poly1305Sha256CipherSuite {
     }
 }
 
-impl TlsKeySchedule for TlsAes128GcmSha256CipherSuite {
+impl TlsCipherSuite for TlsAes128GcmSha256CipherSuite {
     fn digest_size(&self) -> usize {
         <Sha256 as OutputSizeUser>::output_size()
     }
@@ -369,7 +369,7 @@ impl TlsKeySchedule for TlsAes128GcmSha256CipherSuite {
     }
 }
 
-impl TlsKeySchedule for TlsAes256GcmSha384CipherSuite {
+impl TlsCipherSuite for TlsAes256GcmSha384CipherSuite {
     fn digest_size(&self) -> usize {
         <Sha384 as OutputSizeUser>::output_size()
     }
@@ -415,7 +415,7 @@ impl TlsKeySchedule for TlsAes256GcmSha384CipherSuite {
     }
 }
 
-pub fn tls_cipher_suite_try_from(cipher_suite: CipherSuite) -> Result<Box<dyn TlsKeySchedule>, Mutter> {
+pub fn tls_cipher_suite_try_from(cipher_suite: CipherSuite) -> Result<Box<dyn TlsCipherSuite>, Mutter> {
     match cipher_suite {
         CipherSuite::TlsAes128GcmSha256 =>
             Ok(Box::new(TlsAes128GcmSha256CipherSuite::default())),
@@ -456,7 +456,7 @@ fn transcript_hash<D: Digest>(ctx: &[u8]) -> Vec<u8> {
 
 #[cfg(test)]
 mod crypto_tests {
-    use crate::cipher::{TlsAes128GcmSha256Cipher, TlsAes256GcmSha384Cipher, TlsAes256GcmSha384CipherSuite, TlsChaCha20Ploy1305Cipher, TlsCipher, TlsKeySchedule};
+    use crate::cipher::{TlsAes128GcmSha256Cipher, TlsAes256GcmSha384Cipher, TlsAes256GcmSha384CipherSuite, TlsChaCha20Ploy1305Cipher, TlsCipher, TlsCipherSuite};
 
     #[test]
     fn tls_aes128gcm_sha256() {
@@ -468,7 +468,7 @@ mod crypto_tests {
 
     #[test]
     fn tls_aes256gcm_sha384() {
-        let _aes256_gcm_sha384: &dyn TlsKeySchedule = &TlsAes256GcmSha384CipherSuite::default();
+        let _aes256_gcm_sha384: &dyn TlsCipherSuite = &TlsAes256GcmSha384CipherSuite::default();
         let res_aead = TlsAes256GcmSha384Cipher::try_from((vec![2; 32], vec![1; 12]));
         assert!(matches!(res_aead, Ok(_)));
         let aead = res_aead.unwrap();

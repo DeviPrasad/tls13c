@@ -1,4 +1,3 @@
-
 use crate::err::Mutter;
 
 //#[allow(dead_code)]
@@ -23,6 +22,10 @@ impl<'a> DeSer<'a> {
 
     pub fn len(&self) -> usize {
         self.bytes.len()
+    }
+
+    pub fn available(&self) -> usize {
+        self.bytes.len() - self.cursor()
     }
 
     pub fn have(&self, size: usize) -> bool {
@@ -69,7 +72,7 @@ impl<'a> DeSer<'a> {
     pub fn peek_u24_at(&self, i: usize) -> u32 {
         assert!(self.cursor() + i + 2 < self.len());
         let j = self.cursor() + i;
-        ((self.bytes[j] as u32) << 16) | ((self.bytes[j+1] as u32) << 8) | (self.bytes[j + 2] as u32)
+        ((self.bytes[j] as u32) << 16) | ((self.bytes[j + 1] as u32) << 8) | (self.bytes[j + 2] as u32)
     }
 
     pub fn ru8(&mut self) -> u8 {

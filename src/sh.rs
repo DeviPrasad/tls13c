@@ -9,7 +9,7 @@ use crate::def::{CipherSuite,
 use crate::deser::DeSer;
 use crate::err::Mutter;
 use crate::ext::ServerExtensions;
-use crate::protocol::{Protocol, Tls13Record};
+use crate::protocol::{BufferSniffer, Tls13ProtocolSession, Tls13Record};
 
 #[allow(dead_code)]
 pub struct ServerHelloDeSer {}
@@ -45,10 +45,29 @@ pub struct ServerHelloMsg {
     pub(crate) extensions: ServerExtensions,
 }
 
+
 #[allow(dead_code)]
 impl ServerHelloMsg {
+    /*
+    pub fn have_msg(deser: &DeSer) -> Result<(bool, usize), ()> {
+        return match Tls13Record::peek(&deser) {
+            Ok(rec) => {
+                if deser.have(Tls13Record::SIZE + rec.len as usize) {
+                    Ok((true, Tls13Record::SIZE + rec.len as usize))
+                } else {
+                    Ok((false, (Tls13Record::SIZE + rec.len as usize) - deser.available()))
+                }
+            }
+
+            Err(Mutter::DeserializationBufferInsufficient) =>
+                Ok((false, Tls13Record::SIZE - deser.available())),
+
+            _ => Err(())
+        }
+    }*/
+
     pub fn deserialize(mut deser: &mut DeSer) -> Result<(ServerHelloMsg, usize), Mutter> {
-        if !deser.have(Tls13Record::SIZE + size_of::<u16>()) {
+        if !deser.have(Tls13Record::SIZE + size_of::<u32>()) {
             return Mutter::DeserializationBufferInsufficient.into()
         }
         let rec = Tls13Record::read_handshake(&mut deser)?;
@@ -58,13 +77,13 @@ impl ServerHelloMsg {
             return Mutter::HandshakeType.into()
         }
         let msg_len: u32 = deser.ru24();
-        if !(32..=Protocol::MSG_SIZE_MAX).contains(&msg_len) {
+        if !(32..=Tls13ProtocolSession::MSG_SIZE_MAX).contains(&msg_len) {
             return Mutter::MsgLen.into()
         }
         // msg header would have consumed 4 bytes: 1 for message type and 3 for the fragment length
         // note that record length includes the msg header too.
         assert_eq!(rec.len as u32 - 4, msg_len);
-        if !deser.cmp_u16(Protocol::LEGACY_VER_0X0303) {
+        if !deser.cmp_u16(Tls13ProtocolSession::LEGACY_VER_0X0303) {
             return Mutter::LegacyTLS13MsgVer.into()
         }
         let read_server_random = |deser: &mut DeSer| {

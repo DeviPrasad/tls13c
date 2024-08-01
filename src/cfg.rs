@@ -125,9 +125,9 @@ impl PeerSessionConfig {
     }
 
     pub fn github() -> Self {
-        PeerSessionConfig::good("www.github.com",
-                                "www.github.com:443",
-                                "",
+        PeerSessionConfig::good("github.com",
+                                "github.com:443",
+                                "/trending",
                                 &[SupportedGroup::X25519],
                                 &[SignatureScheme::Ed25519, SignatureScheme::EcdsaSecp256r1Sha256],
                                 &[CipherSuite::TlsAes128GcmSha256])

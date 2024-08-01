@@ -33,8 +33,6 @@ impl FinishedMsg {
 
     pub fn check_mac(&self, tag: Vec<u8>) -> Result<(), Mutter> {
         if self.mac == tag {
-            log::info!("{:?}", self.mac);
-            log::info!("{:?}", tag);
             Ok(())
         } else {
             Mutter::FinishMsgVerificationFailed.into()

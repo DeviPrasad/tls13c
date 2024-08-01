@@ -33,8 +33,16 @@ pub enum Mutter {
     DeserializationBufferInsufficient = 83,
     UnexpectedExtension = 84,
     ExpectingEncryptedExtensions = 85,
-    ExpectingFinishedMsg = 86,
-    FinishMsgVerificationFailed = 87,
+
+    ExpectingServerHello = 600,
+    ExpectingChangeCipherSpec = 601,
+    FinishMsgVerificationFailed = 604,
+    ExpectingCertificateVerifyMsg = 606,
+    ExpectingCiphertextAppData = 609,
+    ExpectingFinishedMsg = 615,
+    MissingCertificateSignature = 643,
+    InvalidCertificateRequestContext = 644,
+    TooManyCertificateListEntries = 645,
 
     NotTls13Record = 91,
     NotHandshakeMessage = 93,

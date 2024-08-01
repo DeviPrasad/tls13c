@@ -4,7 +4,7 @@ use crate::sock::TlsStream;
 
 #[allow(dead_code)]
 #[derive(Debug)]
-pub struct EarlySession {
+pub struct TlsConnection {
     pub(crate) peer: PeerSessionConfig,
     // pub(crate) stream: Transport,
     pub(crate) stream: TlsStream,
@@ -30,7 +30,7 @@ pub struct AuthnSession {
 }
 
 #[allow(dead_code)]
-impl EarlySession {
+impl TlsConnection {
     pub fn with_peer(peer: &PeerSessionConfig) -> Result<Self, Mutter> {
         let stream = TlsStream::new(&peer.tls_addr)?;
         Ok(Self {

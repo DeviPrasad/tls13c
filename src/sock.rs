@@ -24,14 +24,18 @@ impl TlsStream {
         for serv_sock_addr in server_sock_addresses {
             let sock = TcpStream::connect(serv_sock_addr)
                 .map_err(|_| Mutter::SocketPropertyError)?;
-            sock.set_read_timeout(Some(core::time::Duration::from_millis(1))).map_err(|e| {
-                log::error!("error: {e:#?}");
-                Mutter::StreamReadinessError.into()
-            })?;
+            sock
+                .set_read_timeout(Some(core::time::Duration::from_millis(1)))
+                .map_err(|e| {
+                    log::error!("error: {e:#?}");
+                    Mutter::StreamReadinessError.into()
+                })?;
+
             return Ok(Self {
                 stream: sock
             })
         }
+
         Err(Mutter::TlsConnection)
     }
 
