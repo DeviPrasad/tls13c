@@ -616,7 +616,7 @@ impl ServerExtensions {
         // list of extensions
         while copied < ext_list_size {
             let ext_type_code = ExtensionTypeCode::try_from(deser.peek_u16())?;
-            log::info!("ServerExtensions deserialize {ext_type_code:#?}");
+            log::info!("ServerExtensions - {ext_type_code:#?}");
             copied += match ext_type_code {
                 ExtensionTypeCode::SupportedVersions => {
                     let (_, size) = SupportedVersionExt::deserialize(PeerType::Server, &mut deser)?;

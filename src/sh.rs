@@ -9,7 +9,7 @@ use crate::def::{CipherSuite,
 use crate::deser::DeSer;
 use crate::err::Mutter;
 use crate::ext::ServerExtensions;
-use crate::protocol::{BufferSniffer, Tls13ProtocolSession, Tls13Record};
+use crate::protocol::{Tls13ProtocolSession, Tls13Record};
 
 #[allow(dead_code)]
 pub struct ServerHelloDeSer {}
@@ -45,27 +45,8 @@ pub struct ServerHelloMsg {
     pub(crate) extensions: ServerExtensions,
 }
 
-
 #[allow(dead_code)]
 impl ServerHelloMsg {
-    /*
-    pub fn have_msg(deser: &DeSer) -> Result<(bool, usize), ()> {
-        return match Tls13Record::peek(&deser) {
-            Ok(rec) => {
-                if deser.have(Tls13Record::SIZE + rec.len as usize) {
-                    Ok((true, Tls13Record::SIZE + rec.len as usize))
-                } else {
-                    Ok((false, (Tls13Record::SIZE + rec.len as usize) - deser.available()))
-                }
-            }
-
-            Err(Mutter::DeserializationBufferInsufficient) =>
-                Ok((false, Tls13Record::SIZE - deser.available())),
-
-            _ => Err(())
-        }
-    }*/
-
     pub fn deserialize(mut deser: &mut DeSer) -> Result<(ServerHelloMsg, usize), Mutter> {
         if !deser.have(Tls13Record::SIZE + size_of::<u32>()) {
             return Mutter::DeserializationBufferInsufficient.into()

@@ -1,0 +1,44 @@
+
+
+Server sends ciphertext records in one more flights. Each flight
+contains one or more TlsInnerPlaintext records. We should tease out
+each variable-length record in sequence.
+
+The client expects to decipher one or more TlsCiphertext records
+(coming its way from the server) containing records of the following
+messages in sequence:
+    EncryptedExtensions,
+    Certificate,
+    CertificateVerify, and
+    Finished message.
+
+1.  let msg_type_procs = [
+        (MSG_TYPE_ENCRYPTED_EXTENSIONS, proc_enc_ext)
+        (MSG_TYPE_CERTIFICATE, proc_cert),
+        (MSG_TYPE_CERTIFICATE_VERIFY, proc_cert_verify)
+        (MSG_TYPE_FINISHED, proc_server_finished)
+    ].iterator()
+
+2.  while msg_type_procs.is_not_finished()
+        2.1  read the next TlsCiphertext record from TlsStream.
+                ciphertext_rec <- read_ciphertext_record(tls_stream)
+
+        2.2  extract and collect TlsInnerPlaintext records iterating over ciphertext_rec
+                let inner_plaintext_recs = [inner_plaintext_0,...,inner_plaintext_N]
+
+        2.3 for each inner_plaintext_rec from inner_plaintext_recs do
+            2.3.1   decipher inner_plaintext_rec
+                        let (tls_msg :: TLS13_HANDSHAKE_OCTET :: optional_zero_pad) = decipher(inner_plaintext_rec)
+            
+            2.3.2   select the next expected message type processor
+                        let mtp = msg_type_procs.next()
+            
+            2.3.3   check and process the recently deciphered tls_msg
+                    if tls_msg.msg_type == mtp.msg_type
+                        2.3.3.1
+                            mtp.proc(tls_msg, session)
+                            session.update_msg_ctx(tls_msg)
+                    else
+                        2.3.3.2
+                            error "unexpected message"
+                            terminate tls_stream

@@ -12,7 +12,7 @@ impl ChangeCipherSpecMsg {
         let rec = Tls13Record::peek(deser)?;
         if rec.rct == RecordContentType::ChangeCipherSpec {
             if rec.len == 1 && deser.peek_u8_at(5) == 1 {
-                deser.seek(deser.cursor() + 6);
+                //deser.seek(deser.cursor() + 6);
                 Ok(Some((ChangeCipherSpecMsg {}, 6)))
             } else {
                 Mutter::ExpectingChangeCipherSpec.into()

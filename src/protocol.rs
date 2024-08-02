@@ -65,10 +65,9 @@ impl BufferSniffer for Tls13Record {
                     Ok((false, (Tls13Record::SIZE + rec.len as usize) - deser.available()))
                 }
             }
-
-            Err(Mutter::DeserializationBufferInsufficient) =>
-                Ok((false, Tls13Record::SIZE - deser.available())),
-
+            Err(Mutter::DeserializationBufferInsufficient) => {
+                Ok((false, Tls13Record::SIZE - deser.available()))
+            }
             _ => Err(())
         }
     }
@@ -77,8 +76,8 @@ impl BufferSniffer for Tls13Record {
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct Tls13Ciphertext {
-    opaque_type: RecordContentType,
-    ver: ProtoColVersion,
+    opaque_type: RecordContentType, // u8
+    ver: ProtoColVersion, // u16
     len: u16
 }
 
@@ -103,7 +102,7 @@ impl BufferSniffer for Tls13Ciphertext {
             return Ok((false, Self::SIZE - deser.available()))
         }
         if RecordContentType::ApplicationData as u8 != deser.peek_u8() {
-            log::error!("Error - expecting cipher text application data header");
+            log::error!("Error - expecting cipher text application data header - {}", deser.peek_u8());
             return Err(())
         }
         if deser.peek_u16_at(1) != TlsLegacyVersion03003 as u16 {
@@ -111,23 +110,19 @@ impl BufferSniffer for Tls13Ciphertext {
             return Err(())
         }
         let len = deser.peek_u16_at(3) as usize;
-        if deser.have(Self::SIZE + len) {
-            Ok((true, Self::SIZE + len))
+        if deser.have(len) {
+            Ok((true, len))
         } else {
-            Ok((false, Self::SIZE + len - deser.available()))
+            Ok((false, len - deser.available()))
         }
     }
 }
 
 pub struct Tls13InnerPlaintext {}
 
-impl Tls13InnerPlaintext {
-    pub fn deserialize(deser: &DeSer, len: usize) -> Result<(bool, usize), Mutter> {
-        if !deser.have(len) {
-            Mutter::DeserializationBufferInsufficient.into()
-        } else {
-            Ok((false, 0))
-        }
+impl BufferSniffer for Tls13InnerPlaintext {
+    fn sniff(deser: &DeSer) -> Result<(bool, usize), ()> {
+        Ok((true, deser.len()))
     }
 }
 
@@ -144,7 +139,7 @@ impl DHSession {
             p256_key_pair: P256KeyPair::default(),
         }
     }
-    
+
     pub fn x25519_key_share(&mut self) -> KeyShare {
         KeyShare::x25519(self.x25519_key_pair.public_bytes())
     }
@@ -191,11 +186,10 @@ impl Tls13ProtocolSession {
         }
     }
 
-    
     pub fn random(&mut self) -> [u8; 32] {
         self.random.clone().try_into().unwrap()
     }
-    
+
     pub fn msg_ctx(&self) -> Vec<u8> {
         self.msg_ctx.clone()
     }
@@ -215,24 +209,22 @@ impl Tls13ProtocolSession {
         Ok(())
     }
 
-    pub fn read_server_hello(&mut self) -> Result<(ServerHelloMsg, usize, Vec<u8>), Mutter> {
+    pub fn read_server_hello(&mut self) -> Result<ServerHelloMsg, Mutter> {
         self.hs_buf = Vec::new();
         if !try_sniff::<Tls13Record>(Tls13Record::SIZE, &mut self.hs_buf, &mut self.serv_stream) {
             log::error!("Bad handshake record - expecting ServerHello.");
             return Mutter::ExpectingServerHello.into()
         }
-        let hs_buf_len = self.hs_buf.len();
         let mut deser = DeSer::new(&self.hs_buf);
         let (sh, off) = ServerHelloMsg::deserialize(&mut deser).unwrap();
         assert_eq!(off, Tls13Record::SIZE);
         self.serv_hello_rec_size = Tls13Record::SIZE + sh.fragment_len as usize;
         self.hs_buf_last = self.serv_hello_rec_size;
-        log::info!("{:?}", sh);
+        // log::info!("{:?}", sh);
         self.msg_ctx.extend_from_slice(&self.hs_buf[Tls13Record::SIZE..self.serv_hello_rec_size]);
-        log::info!("{:?}", &self.hs_buf[Tls13Record::SIZE..self.serv_hello_rec_size]);
-        //// Ok((sh, self.serv_hello_rec_size, self.hs_buf.clone()))
-        // return the remaining/left-over slice for consumption downstream
-        Ok((sh, 0, self.hs_buf[self.hs_buf_last..hs_buf_len].into()))
+
+        log::info!("ServerHello - Validated");
+        Ok(sh)
     }
 
     fn hs_buf_available(&self) -> usize {
@@ -240,19 +232,51 @@ impl Tls13ProtocolSession {
         self.hs_buf.len() - self.hs_buf_last
     }
 
-    pub fn read_change_cipher_spec(&mut self) -> Result<(usize, Vec<u8>), Mutter> {
+    pub fn read_change_cipher_spec(&mut self) -> Result<usize, Mutter> {
         if self.hs_buf_available() < Tls13Record::SIZE + 1 {
             if !try_sniff::<Tls13Record>(Tls13Record::SIZE + 1, &mut self.hs_buf, &mut self.serv_stream) {
-                return Mutter::ExpectingServerHello.into()
+                return Mutter::ExpectingChangeCipherSpec.into()
             }
         }
-        let hs_buf_len = self.hs_buf.len();
         let mut deser = DeSer::new(&self.hs_buf[self.hs_buf_last..]);
         if let Some((_, size)) = ChangeCipherSpecMsg::deserialize(&mut deser)? {
-            log::info!("ChangeCipherSpec");
+            log::info!("ChangeCipherSpec - Found");
             self.hs_buf_last += size;
+        } else {
+            log::info!("ChangeCipherSpec - Not Found");
         }
-        Ok((0, self.hs_buf[self.hs_buf_last..hs_buf_len].into()))
+        Ok(0)
+    }
+
+    pub fn read_ciphertext_record(&mut self) -> Result<Vec<u8>, Mutter> {
+        let start = self.hs_buf_last;
+        // log::info!("read_ciphertext_record - available = {}", self.hs_buf_available());
+        if self.hs_buf_available() < Tls13Ciphertext::SIZE {
+            let need = Tls13Ciphertext::SIZE - self.hs_buf_available();
+            if !try_sniff::<Tls13Ciphertext>(need, &mut self.hs_buf, &mut self.serv_stream) {
+                return Mutter::ExpectingCiphertextRecord.into()
+            }
+        }
+        let len = {
+            let p = &self.hs_buf[self.hs_buf_last..];
+            let deser = DeSer::new(p);
+            assert_eq!(deser.peek_u8(), 23);
+            assert_eq!(deser.peek_u16_at(1), 0x0303);
+            deser.peek_u16_at(3) as usize
+        };
+        assert!(len > 0);
+
+        if self.hs_buf_available() < Tls13Ciphertext::SIZE + len {
+            let need = Tls13Ciphertext::SIZE + len - self.hs_buf_available();
+            if !try_sniff::<Tls13InnerPlaintext>(need, &mut self.hs_buf, &mut self.serv_stream) {
+                return Mutter::ExpectingCiphertextRecord.into()
+            }
+        }
+
+        let ct = &self.hs_buf[start..start + Tls13Ciphertext::SIZE + len];
+        self.hs_buf_last += Tls13Ciphertext::SIZE + len;
+
+        Ok(ct.into())
     }
 }
 
@@ -260,17 +284,21 @@ pub trait BufferSniffer {
     fn sniff(deser: &DeSer) -> Result<(bool, usize), ()>;
 }
 
-pub fn try_sniff<S: BufferSniffer>(need: usize, mut buf: &mut Vec<u8>, serv_stream: &mut TlsStream) -> bool {
+pub fn try_sniff<S: BufferSniffer>(need: usize, tls_buf: &mut Vec<u8>, serv_stream: &mut TlsStream) -> bool {
     let mut require = need;
+    let mut cache = vec![0; 0];
     while require > 0 {
-        match serv_stream.fulfill(require, &mut buf) {
-            Ok(copied_size) => {
-                log::info!("stream read {copied_size} bytes.");
-                let deser = DeSer::new(&buf);
+        // match serv_stream.fulfill(require, &mut buf.into()) {
+        match serv_stream.fulfill(require, &mut cache) {
+            Ok(_) => {
+                let deser = DeSer::new(&cache);
                 if let Ok((adequate, size)) = S::sniff(&deser) {
                     if adequate {
-                        require = 0
+                        // log::info!("stream read {copied_size} bytes. need {need}. adequate - yes. {size}");
+                        tls_buf.extend(cache);
+                        return true
                     } else {
+                        // log::info!("stream read {copied_size} bytes. need {need}. require {require}. adequate - no.  {size}");
                         require = size
                     }
                 } else {
@@ -284,5 +312,5 @@ pub fn try_sniff<S: BufferSniffer>(need: usize, mut buf: &mut Vec<u8>, serv_stre
             }
         }
     }
-    true
+    false
 }
