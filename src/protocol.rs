@@ -1,8 +1,9 @@
 use crate::ccs::ChangeCipherSpecMsg;
 use crate::ch::ClientHelloMsg;
+use crate::cipher::{HandshakeSecrets, TlsCipherSuite};
 use crate::crypto;
 use crate::crypto::{P256KeyPair, X25519KeyPair};
-use crate::def::{LegacyRecordVersion, ProtoColVersion, RecordContentType};
+use crate::def::{CipherSuite, LegacyRecordVersion, ProtoColVersion, RecordContentType, SupportedGroup};
 use crate::def::LegacyTlsVersion::TlsLegacyVersion03003;
 use crate::deser::DeSer;
 use crate::err::Mutter;
@@ -278,6 +279,37 @@ impl Tls13ProtocolSession {
 
         Ok(ct.into())
     }
+
+    pub fn create_handshake_secrets(&self,
+                                    cipher_suite: CipherSuite,
+                                    serv_key_share: KeyShare,
+                                    dh: DHSession) -> Result<HandshakeSecrets, Mutter> {
+        let dh_shared_secret: Vec<u8> =
+            if serv_key_share.group == SupportedGroup::X25519 {
+                dh.x25519_dh(serv_key_share.public_key)
+            } else if serv_key_share.group == SupportedGroup::Secp256r1 {
+                dh.p256_dh(serv_key_share.public_key)
+            } else {
+                vec![]
+            };
+
+        assert!(!dh_shared_secret.is_empty());
+
+        let hs_cipher_suite: Box<dyn TlsCipherSuite> = cipher_suite.try_into()?;
+
+        let secrets = hs_cipher_suite.derive_handshake_secrets(&dh_shared_secret, &self.msg_ctx);
+
+        let serv_cipher = hs_cipher_suite.cipher(secrets.1.clone(), secrets.2.clone());
+        let cl_cipher = hs_cipher_suite.cipher(secrets.4.clone(), secrets.5.clone());
+
+        Ok(HandshakeSecrets::new(
+            hs_cipher_suite,
+            secrets.0,
+            serv_cipher,
+            secrets.3,
+            cl_cipher,
+            secrets.6))
+    }
 }
 
 pub trait BufferSniffer {
@@ -288,17 +320,14 @@ pub fn try_sniff<S: BufferSniffer>(need: usize, tls_buf: &mut Vec<u8>, serv_stre
     let mut require = need;
     let mut cache = vec![0; 0];
     while require > 0 {
-        // match serv_stream.fulfill(require, &mut buf.into()) {
         match serv_stream.fulfill(require, &mut cache) {
             Ok(_) => {
                 let deser = DeSer::new(&cache);
                 if let Ok((adequate, size)) = S::sniff(&deser) {
                     if adequate {
-                        // log::info!("stream read {copied_size} bytes. need {need}. adequate - yes. {size}");
                         tls_buf.extend(cache);
                         return true
                     } else {
-                        // log::info!("stream read {copied_size} bytes. need {need}. require {require}. adequate - no.  {size}");
                         require = size
                     }
                 } else {

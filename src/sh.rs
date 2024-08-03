@@ -1,14 +1,9 @@
 use std::mem::size_of;
 
-use crate::def::{CipherSuite,
-                 HandshakeType,
-                 LegacyRecordVersion,
-                 LegacyTlsVersion,
-                 Random,
-                 RecordContentType};
+use crate::def::{CipherSuite, HandshakeType, LegacyRecordVersion, LegacyTlsVersion, Random, RecordContentType, SupportedGroup};
 use crate::deser::DeSer;
 use crate::err::Mutter;
-use crate::ext::ServerExtensions;
+use crate::ext::{KeyShare, ServerExtensions};
 use crate::protocol::{Tls13ProtocolSession, Tls13Record};
 
 #[allow(dead_code)]
@@ -76,8 +71,10 @@ impl ServerHelloMsg {
         let _compression_methods_ = deser.zlu8()?;
 
         let (extensions, _) = ServerExtensions::deserialize(deser)?;
+
         assert_eq!(deser.cursor() - 5, rec.len as usize);
-        Ok((ServerHelloMsg {
+
+        let sh = ServerHelloMsg {
             rct: rec.rct,
             legacy_rec_ver: rec.ver,
             // NOTE: this is the size of the entire HelloServer message. This is NOT msg_len!
@@ -90,7 +87,23 @@ impl ServerHelloMsg {
             cipher_suite,
             legacy_compression_method: 0,
             extensions,
-        }, sh_msg_start_cursor))
+        };
+
+        Ok((sh, sh_msg_start_cursor))
+    }
+
+    pub fn key_share(&self, cl_key_shares: &[KeyShare]) -> Result<KeyShare, Mutter> {
+        let serv_key_share: KeyShare = self.extensions.0.clone();
+        for client_key_share in cl_key_shares {
+            if client_key_share.group == serv_key_share.group {
+                if client_key_share.group == SupportedGroup::X25519 {
+                    return Ok(serv_key_share);
+                } else if client_key_share.group == SupportedGroup::Secp256r1 {
+                    return Ok(serv_key_share);
+                }
+            }
+        }
+        Mutter::ServerKeyShareBad.into()
     }
 
     // sec 4.1.3 ServerHello, page 32

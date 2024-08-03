@@ -80,6 +80,7 @@ pub enum Mutter {
     Secp256r1NotYetSupported = 244,
     X25519KeyLenBad = 247,
     Secp256r1KeyLenBad = 248,
+    ServerKeyShareBad = 249,
 
     BadInput = 255,
 

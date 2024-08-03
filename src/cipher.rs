@@ -211,7 +211,25 @@ pub trait TlsCipherSuite {
     // 'server_handshake_traffic_secret', and 'client_handshake_traffic_secret', respectively.
     // The value of 'secret' for Application Data record type is
     // 'server_application_traffic_secret' and 'client_application_traffic_secret', respectively.
-    fn derive_server_handshake_secrets(&mut self, dh: &[u8], hello_msg_ctx: &[u8]) -> (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>) {
+    fn derive_handshake_secrets(&self, dh: &[u8], hello_msg_ctx: &[u8]) ->
+    (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>) {
+        let early_secret = self.hkdf_extract(
+            [0].repeat(self.digest_size()).as_slice(),
+            [0].repeat(self.digest_size()).as_slice());
+        let salt = self.derive_secret(&early_secret, "derived", &[]);
+        let hs_secret_master = self.hkdf_extract(&salt, dh);
+        let serv_hs_secret = self.derive_secret(&hs_secret_master, "s hs traffic", hello_msg_ctx);
+        let cl_hs_secret = self.derive_secret(&hs_secret_master, "c hs traffic", hello_msg_ctx);
+        (hs_secret_master,
+         self.hkdf_expand_label(&serv_hs_secret, "key", &[], self.key_size() as u16),
+         self.hkdf_expand_label(&serv_hs_secret, "iv", &[], self.nonce_len() as u16),
+         serv_hs_secret,
+         self.hkdf_expand_label(&cl_hs_secret, "key", &[], self.key_size() as u16),
+         self.hkdf_expand_label(&cl_hs_secret, "iv", &[], self.nonce_len() as u16),
+         cl_hs_secret)
+    }
+
+    fn derive_server_handshake_secrets(&self, dh: &[u8], hello_msg_ctx: &[u8]) -> (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>) {
         let early_secret = self.hkdf_extract(
             [0].repeat(self.digest_size()).as_slice(),
             [0].repeat(self.digest_size()).as_slice());
@@ -415,15 +433,80 @@ impl TlsCipherSuite for TlsAes256GcmSha384CipherSuite {
     }
 }
 
-pub fn tls_cipher_suite_try_from(cipher_suite: CipherSuite) -> Result<Box<dyn TlsCipherSuite>, Mutter> {
-    match cipher_suite {
-        CipherSuite::TlsAes128GcmSha256 =>
-            Ok(Box::new(TlsAes128GcmSha256CipherSuite::default())),
-        CipherSuite::TlsChacha20Poly1305Sha256 =>
-            Ok(Box::new(TlsChaCha20Poly1305Sha256CipherSuite::default())),
-        CipherSuite::TlsAes256GcmSha384 =>
-            Ok(Box::new(TlsAes256GcmSha384CipherSuite::default())),
-        _ => Mutter::UnsupportedCipherSuite.into()
+impl TryFrom<CipherSuite> for Box<dyn TlsCipherSuite> {
+    type Error = Mutter;
+
+    fn try_from(cs: CipherSuite) -> Result<Self, Mutter> {
+        match cs {
+            CipherSuite::TlsAes128GcmSha256 =>
+                Ok(Box::new(TlsAes128GcmSha256CipherSuite::default())),
+            CipherSuite::TlsChacha20Poly1305Sha256 =>
+                Ok(Box::new(TlsChaCha20Poly1305Sha256CipherSuite::default())),
+            CipherSuite::TlsAes256GcmSha384 =>
+                Ok(Box::new(TlsAes256GcmSha384CipherSuite::default())),
+            _ => Mutter::UnsupportedCipherSuite.into()
+        }
+    }
+}
+
+pub struct HandshakeSecrets {
+    // pub(crate) cipher_suite: Box<dyn TlsCipherSuite>,
+    cipher_suite: Box<dyn TlsCipherSuite>,
+    hs_secret_master: Vec<u8>,
+    pub(crate) serv_cipher: Box<dyn TlsCipher>,
+    pub(crate) serv_hs_traffic_secret: Vec<u8>,
+    pub(crate) cl_cipher: Box<dyn TlsCipher>,
+    pub(crate) cl_hs_traffic_secret: Vec<u8>,
+}
+
+impl HandshakeSecrets {
+    pub fn new(cipher_suite: Box<dyn TlsCipherSuite>,
+               hs_secret_master: Vec<u8>,
+               serv_cipher: Box<dyn TlsCipher>,
+               serv_hs_traffic_secret: Vec<u8>,
+               //serv_wr_key: Vec<u8>,
+               //serv_wr_iv: Vec<u8>,
+               cl_cipher: Box<dyn TlsCipher>,
+               cl_hs_traffic_secret: Vec<u8>,
+               //cl_wr_key: Vec<u8>,
+               //cl_wr_iv: Vec<u8>,
+    ) -> Self {
+        Self {
+            cipher_suite,
+            hs_secret_master,
+            serv_cipher,
+            serv_hs_traffic_secret,
+            //serv_wr_key,
+            //serv_wr_iv,
+            cl_cipher,
+            cl_hs_traffic_secret,
+            //cl_wr_key,
+            //cl_wr_iv
+        }
+    }
+
+    pub fn hs_traffic_secret_master(&self) -> Vec<u8> {
+        self.hs_secret_master.clone()
+    }
+
+    pub fn digest_size(&self) -> usize {
+        self.cipher_suite.digest_size()
+    }
+
+    pub fn cipher(&self, key: Vec<u8>, iv: Vec<u8>) -> Box<dyn TlsCipher> {
+        self.cipher_suite.cipher(key, iv)
+    }
+
+    pub fn derive_finished_mac(&self, base_key: &[u8], hs_ctx: &[u8]) -> Result<Vec<u8>, Mutter> {
+        self.cipher_suite.derive_finished_mac(base_key, hs_ctx)
+    }
+
+    pub fn derive_client_app_traffic_secrets(&mut self, hs_secret: Vec<u8>, hello_to_serv_fin_msg_ctx: &[u8]) -> (Vec<u8>, Vec<u8>) {
+        self.cipher_suite.derive_client_app_traffic_secrets(hs_secret, hello_to_serv_fin_msg_ctx)
+    }
+
+    pub fn derive_server_app_traffic_secrets(&mut self, hs_secret: Vec<u8>, hello_to_serv_fin_msg_ctx: &[u8]) -> (Vec<u8>, Vec<u8>) {
+        self.cipher_suite.derive_server_app_traffic_secrets(hs_secret, hello_to_serv_fin_msg_ctx)
     }
 }
 
