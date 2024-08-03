@@ -1,7 +1,7 @@
+use crate::{crypto, def};
 use crate::ccs::ChangeCipherSpecMsg;
 use crate::ch::ClientHelloMsg;
 use crate::cipher::{HandshakeSecrets, TlsCipherSuite};
-use crate::crypto;
 use crate::crypto::{P256KeyPair, X25519KeyPair};
 use crate::def::{CipherSuite, LegacyRecordVersion, ProtoColVersion, RecordContentType, SupportedGroup};
 use crate::def::LegacyTlsVersion::TlsLegacyVersion03003;
@@ -95,6 +95,24 @@ impl Default for Tls13Ciphertext {
 
 impl Tls13Ciphertext {
     pub const SIZE: usize = 5;
+
+    // additional authenticated data
+    pub fn aad(size: u16) -> [u8; 5] {
+        let mut ct_aad = [0u8; 5];
+        ct_aad[0] = RecordContentType::ApplicationData as u8;
+        (ct_aad[1], ct_aad[2]) = (0x03, 0x03);
+        (ct_aad[3], ct_aad[4]) = def::u16_to_u8_pair(size);
+        ct_aad
+    }
+
+    pub fn serialize(enc_rec: Vec<u8>) -> Vec<u8> {
+        let mut ct = vec![0; 5 + enc_rec.len()];
+        ct[0] = RecordContentType::ApplicationData as u8;
+        (ct[1], ct[2]) = (0x03, 0x03);
+        (ct[3], ct[4]) = def::u16_to_u8_pair(enc_rec.len() as u16);
+        ct[5..].copy_from_slice(&enc_rec);
+        ct
+    }
 }
 
 impl BufferSniffer for Tls13Ciphertext {
@@ -185,6 +203,10 @@ impl Tls13ProtocolSession {
             serv_hello_rec_size: 0,
             hs_buf_last: 0,
         }
+    }
+
+    pub fn send(&mut self, data: &[u8]) -> Result<usize, Mutter> {
+        self.serv_stream.write(data)
     }
 
     pub fn random(&mut self) -> [u8; 32] {

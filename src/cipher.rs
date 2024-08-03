@@ -453,10 +453,10 @@ pub struct HandshakeSecrets {
     // pub(crate) cipher_suite: Box<dyn TlsCipherSuite>,
     cipher_suite: Box<dyn TlsCipherSuite>,
     hs_secret_master: Vec<u8>,
-    pub(crate) serv_cipher: Box<dyn TlsCipher>,
-    pub(crate) serv_hs_traffic_secret: Vec<u8>,
-    pub(crate) cl_cipher: Box<dyn TlsCipher>,
-    pub(crate) cl_hs_traffic_secret: Vec<u8>,
+    serv_cipher: Box<dyn TlsCipher>,
+    serv_hs_traffic_secret: Vec<u8>,
+    cl_cipher: Box<dyn TlsCipher>,
+    cl_hs_traffic_secret: Vec<u8>,
 }
 
 impl HandshakeSecrets {
@@ -476,12 +476,8 @@ impl HandshakeSecrets {
             hs_secret_master,
             serv_cipher,
             serv_hs_traffic_secret,
-            //serv_wr_key,
-            //serv_wr_iv,
             cl_cipher,
             cl_hs_traffic_secret,
-            //cl_wr_key,
-            //cl_wr_iv
         }
     }
 
@@ -497,8 +493,20 @@ impl HandshakeSecrets {
         self.cipher_suite.cipher(key, iv)
     }
 
-    pub fn derive_finished_mac(&self, base_key: &[u8], hs_ctx: &[u8]) -> Result<Vec<u8>, Mutter> {
-        self.cipher_suite.derive_finished_mac(base_key, hs_ctx)
+    pub fn decrypt_next(&mut self, ad: &[u8], out: &mut Vec<u8>) -> Result<(), Mutter> {
+        self.serv_cipher.decrypt_next(ad, out)
+    }
+
+    pub fn encrypt_next(&mut self, ad: &[u8], out: &mut Vec<u8>) -> Result<(), Mutter> {
+        self.cl_cipher.encrypt_next(ad, out)
+    }
+
+    pub fn server_finished_mac(&self, hs_ctx: &[u8]) -> Result<Vec<u8>, Mutter> {
+        self.cipher_suite.derive_finished_mac(&self.serv_hs_traffic_secret, hs_ctx)
+    }
+
+    pub fn client_finished_mac(&self, hs_ctx: &[u8]) -> Result<Vec<u8>, Mutter> {
+        self.cipher_suite.derive_finished_mac(&self.cl_hs_traffic_secret, hs_ctx)
     }
 
     pub fn derive_client_app_traffic_secrets(&mut self, hs_secret: Vec<u8>, hello_to_serv_fin_msg_ctx: &[u8]) -> (Vec<u8>, Vec<u8>) {
