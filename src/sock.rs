@@ -1,7 +1,7 @@
 use std::io;
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpStream, ToSocketAddrs};
-
+use std::time::Duration;
 use crate::err::Mutter;
 
 #[allow(dead_code)]
@@ -25,7 +25,7 @@ impl TlsStream {
         for serv_sock_addr in server_sock_addresses {
             let sock =
                 TcpStream::connect(serv_sock_addr).map_err(|_| Mutter::SocketPropertyError)?;
-            sock.set_read_timeout(Some(core::time::Duration::from_millis(1)))
+            sock.set_read_timeout(Some(Duration::from_millis(5)))
                 .map_err(|e| {
                     log::error!("error: {e:#?}");
                     Mutter::StreamReadinessError.into()
@@ -69,8 +69,8 @@ impl Stream for TlsStream {
                     }
                     continue;
                 }
-                Err(e) => {
-                    log::error!("error: {e:#?}");
+                Err(_e) => {
+                    // log::error!("error: {e:#?}");
                     return Mutter::StreamError.into();
                 }
             }
