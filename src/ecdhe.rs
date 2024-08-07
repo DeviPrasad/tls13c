@@ -14,12 +14,12 @@ pub trait TlsGroupSecp256r1: TlsDH {}
 
 #[derive(Debug)]
 pub struct GroupX25519 {
-    phantom: PhantomData<u8>
+    phantom: PhantomData<u8>,
 }
 
 #[derive(Debug)]
 pub struct GroupSecp256r1 {
-    phantom: PhantomData<u8>
+    phantom: PhantomData<u8>,
 }
 
 #[allow(dead_code)]
@@ -43,6 +43,5 @@ impl TlsDH for GroupSecp256r1 {
         &[]
     }
 }
-
 
 impl TlsGroupX25519 for GroupX25519 {}

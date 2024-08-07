@@ -18,7 +18,7 @@ impl ChangeCipherSpecMsg {
                 Mutter::ExpectingChangeCipherSpec.into()
             }
         } else {
-            return Ok(None)
+            return Ok(None);
         }
     }
 

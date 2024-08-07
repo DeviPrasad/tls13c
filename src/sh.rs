@@ -1,10 +1,13 @@
 use std::mem::size_of;
 
-use crate::def::{CipherSuite, HandshakeType, LegacyRecordVersion, LegacyTlsVersion, Random, RecordContentType, SupportedGroup};
+use crate::def::{
+    CipherSuiteId, HandshakeType, LegacyRecordVersion, LegacyTlsVersion, Random, RecordContentType,
+    SupportedGroup,
+};
 use crate::deser::DeSer;
 use crate::err::Mutter;
-use crate::ext::{KeyShare, ServerExtensions};
-use crate::protocol::{Tls13ProtocolSession, Tls13Record};
+use crate::ext::{ServerExtensions, ServerSessionPublicKey};
+use crate::protocol::{KeyExchangeSession, Tls13Record};
 
 #[allow(dead_code)]
 pub struct ServerHelloDeSer {}
@@ -30,7 +33,7 @@ pub struct ServerHelloMsg {
     // TlsAes128GcmSha256 (0x13, 0x01)
     // TlsAes256GcmSha384 (0x13, 0x02)
     // TLS_CHACHA20_POLY1305_SHA256 (0x13, 0x03)
-    pub(crate) cipher_suite: CipherSuite,
+    pub(crate) cipher_suite_id: CipherSuiteId,
     // TLS 1.3 client MUST send a vector [1, 0] for compression methods.
     // The TLS 1.3 server MUST echo the same value.
     legacy_compression_method: u8, // value == 0
@@ -44,30 +47,29 @@ pub struct ServerHelloMsg {
 impl ServerHelloMsg {
     pub fn deserialize(mut deser: &mut DeSer) -> Result<(ServerHelloMsg, usize), Mutter> {
         if !deser.have(Tls13Record::SIZE + size_of::<u32>()) {
-            return Mutter::DeserializationBufferInsufficient.into()
+            return Mutter::DeserializationBufferInsufficient.into();
         }
         let rec = Tls13Record::read_handshake(&mut deser)?;
         let sh_msg_start_cursor = deser.cursor();
         assert_eq!(deser.cursor(), 5);
         if HandshakeType::from(deser.ru8()) != HandshakeType::ServerHello {
-            return Mutter::HandshakeType.into()
+            return Mutter::HandshakeType.into();
         }
         let msg_len: u32 = deser.ru24();
-        if !(32..=Tls13ProtocolSession::MSG_SIZE_MAX).contains(&msg_len) {
-            return Mutter::MsgLen.into()
+        if !(32..=KeyExchangeSession::MSG_SIZE_MAX).contains(&msg_len) {
+            return Mutter::MsgLen.into();
         }
         // msg header would have consumed 4 bytes: 1 for message type and 3 for the fragment length
         // note that record length includes the msg header too.
         assert_eq!(rec.len as u32 - 4, msg_len);
-        if !deser.cmp_u16(Tls13ProtocolSession::LEGACY_VER_0X0303) {
-            return Mutter::LegacyTLS13MsgVer.into()
+        if !deser.cmp_u16(KeyExchangeSession::LEGACY_VER_0X0303) {
+            return Mutter::LegacyTLS13MsgVer.into();
         }
-        let read_server_random = |deser: &mut DeSer| {
-            deser.slice(32).try_into().map_err(|_| Mutter::RandomVal)
-        };
+        let read_server_random =
+            |deser: &mut DeSer| deser.slice(32).try_into().map_err(|_| Mutter::RandomVal);
         let random: Random = read_server_random(&mut deser)?;
         let legacy_session_id: Vec<u8> = deser.vlu8_vec();
-        let cipher_suite = CipherSuite::try_from(deser.ru16())?;
+        let cipher_suite = CipherSuiteId::try_from(deser.ru16())?;
         let _compression_methods_ = deser.zlu8()?;
 
         let (extensions, _) = ServerExtensions::deserialize(deser)?;
@@ -84,7 +86,7 @@ impl ServerHelloMsg {
             legacy_tls_ver: Default::default(),
             random,
             legacy_session_id,
-            cipher_suite,
+            cipher_suite_id: cipher_suite,
             legacy_compression_method: 0,
             extensions,
         };
@@ -92,8 +94,11 @@ impl ServerHelloMsg {
         Ok((sh, sh_msg_start_cursor))
     }
 
-    pub fn key_share(&self, cl_key_shares: &[KeyShare]) -> Result<KeyShare, Mutter> {
-        let serv_key_share: KeyShare = self.extensions.0.clone();
+    pub fn key_share(
+        &self,
+        cl_key_shares: &[ServerSessionPublicKey],
+    ) -> Result<ServerSessionPublicKey, Mutter> {
+        let serv_key_share: ServerSessionPublicKey = self.extensions.0.clone();
         for client_key_share in cl_key_shares {
             if client_key_share.group == serv_key_share.group {
                 if client_key_share.group == SupportedGroup::X25519 {
@@ -110,8 +115,9 @@ impl ServerHelloMsg {
     // HelloRetryRequest messages uses the same structure as ServerHello, but with
     // Random set to the special value of the SHA-256 of "HelloRetryRequest".
     const HELLO_RETRY_REQUEST: &'static [u8] = &[
-        0xCF, 0x21, 0xAD, 0x74, 0xE5, 0x9A, 0x61, 0x11, 0xBE, 0x1D, 0x8C, 0x02, 0x1E, 0x65, 0xB8, 0x91,
-        0xC2, 0xA2, 0x11, 0x16, 0x7A, 0xBB, 0x8C, 0x5E, 0x07, 0x9E, 0x09, 0xE2, 0xC8, 0xA8, 0x33, 0x9C
+        0xCF, 0x21, 0xAD, 0x74, 0xE5, 0x9A, 0x61, 0x11, 0xBE, 0x1D, 0x8C, 0x02, 0x1E, 0x65, 0xB8,
+        0x91, 0xC2, 0xA2, 0x11, 0x16, 0x7A, 0xBB, 0x8C, 0x5E, 0x07, 0x9E, 0x09, 0xE2, 0xC8, 0xA8,
+        0x33, 0x9C,
     ];
 
     pub fn is_server_retry(&self) -> bool {

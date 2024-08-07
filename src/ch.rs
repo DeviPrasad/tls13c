@@ -1,6 +1,8 @@
-use crate::def::{CipherSuite, CipherSuites, HandshakeType, ProtoColVersion, Random, RecordContentType, to_u16};
+use crate::def::{
+    to_u16, CipherSuiteId, CipherSuites, HandshakeType, ProtoColVersion, Random, RecordContentType,
+};
 use crate::err::Mutter;
-use crate::ext::{ClientExtensions, KeyShareExtensions};
+use crate::ext::{ClientExtensions, ServerSessionPublicKey};
 
 struct CompressionMethods();
 
@@ -8,7 +10,7 @@ struct CompressionMethods();
 impl CompressionMethods {
     pub fn deserialize(bytes: &[u8]) -> Result<usize, Mutter> {
         if bytes.len() < 2 || !(bytes[0] == 1 && bytes[1] == 0) {
-            return Err(Mutter::CompressionMethods)
+            return Err(Mutter::CompressionMethods);
         }
         Ok(2)
     }
@@ -66,13 +68,13 @@ impl ClientHelloMsg {
 
     pub fn serialize(&self, bytes: &mut [u8]) -> Result<usize, Mutter> {
         if self.size() > bytes.len() {
-            return Err(Mutter::SerializationBufferInsufficient)
+            return Err(Mutter::SerializationBufferInsufficient);
         }
         // first five bytes of the message hold content_type, legacy_version, and fragment_len.
         let frag_len: u16 = self.size() as u16 - 5;
         bytes[0..3].copy_from_slice(&[
             22, // 0: content_type = handshake
-            0x3, 0x03 // 1: legacy_record_version
+            0x3, 0x03, // 1: legacy_record_version
         ]);
         // 3: fragment_len
         bytes[3..5].copy_from_slice(&frag_len.to_be_bytes());
@@ -108,14 +110,15 @@ impl ClientHelloMsg {
         Ok(self.size())
     }
 
-    pub fn try_from(random: Random, ciphers: Vec<CipherSuite>, extensions: ClientExtensions) -> Result<Self, Mutter> {
+    pub fn try_from(
+        random: Random,
+        ciphers: Vec<CipherSuiteId>,
+        extensions: ClientExtensions,
+    ) -> Result<Self, Mutter> {
         // self.size() shows that a client hello message needs 50+ bytes of data.
         // we subtract five bytes of the record header to reach the first byte of the handshake message.
         // That's how we arrive at the magic number 45 below.
-        let ch_frag_len =
-            45 +
-                ciphers.len() * 2 +
-                extensions.size();
+        let ch_frag_len = 45 + ciphers.len() * 2 + extensions.size();
 
         if ch_frag_len >= (1 << 14) + 3 {
             return Err(Mutter::TooBig);
@@ -141,7 +144,7 @@ impl ClientHelloMsg {
         res
     }
 
-    pub fn key_shares(&self) -> KeyShareExtensions {
-        self.extensions.key_share_extensions().clone()
+    pub fn key_shares(&self) -> &[ServerSessionPublicKey] {
+        self.extensions.key_share_extensions().extensions()
     }
 }

@@ -11,23 +11,27 @@ pub struct FinishedMsg {
 impl FinishedMsg {
     pub fn deserialize(deser: &mut DeSer) -> Result<(Self, usize), Mutter> {
         if !deser.have(4) {
-            return Mutter::DeserializationBufferInsufficient.into()
+            return Mutter::DeserializationBufferInsufficient.into();
         }
         if deser.peek_u8() != HandshakeType::Finished as u8 {
-            return Mutter::ExpectingFinishedMsg.into()
+            return Mutter::ExpectingFinishedMsg.into();
         };
         let len = deser.peek_u24_at(1) as usize;
         if !deser.have(4 + len) {
-            return Mutter::DeserializationBufferInsufficient.into()
+            return Mutter::DeserializationBufferInsufficient.into();
         }
-        let head: [u8; 4] = deser.slice(4)
-                                 .try_into()
-                                 .map_err(|_| Mutter::InternalError)?;
+        let head: [u8; 4] = deser
+            .slice(4)
+            .try_into()
+            .map_err(|_| Mutter::InternalError)?;
         let mac = deser.slice(len);
-        Ok((FinishedMsg {
-            head,
-            mac: mac.into(),
-        }, 4 + len))
+        Ok((
+            FinishedMsg {
+                head,
+                mac: mac.into(),
+            },
+            4 + len,
+        ))
     }
 
     pub fn serialize(tag: Vec<u8>) -> Vec<u8> {

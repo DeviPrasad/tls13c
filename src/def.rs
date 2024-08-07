@@ -6,14 +6,14 @@ pub type ProtoColVersion = u16;
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum LegacyRecordVersion {
     #[default]
-    TlsLegacyVersion03003 = 0x0303
+    TlsLegacyVersion03003 = 0x0303,
 }
 
 #[repr(u16)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum LegacyTlsVersion {
     #[default]
-    TlsLegacyVersion03003 = 0x0303
+    TlsLegacyVersion03003 = 0x0303,
 }
 
 pub type Random = [u8; 32];
@@ -25,7 +25,7 @@ pub type Random = [u8; 32];
 // TLS_CHACHA20_POLY1305_SHA256 (0x13, 0x03)
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CipherSuite {
+pub enum CipherSuiteId {
     TlsAes128GcmSha256,
     TlsAes256GcmSha384,
     TlsChacha20Poly1305Sha256,
@@ -33,24 +33,24 @@ pub enum CipherSuite {
     TlsAes128Ccm8Sha256,
 }
 
-impl TryFrom<u16> for CipherSuite {
+impl TryFrom<u16> for CipherSuiteId {
     type Error = Mutter;
     fn try_from(val: u16) -> Result<Self, Self::Error> {
         Self::try_from(u16_to_u8_pair(val))
     }
 }
 
-impl TryFrom<(u8, u8)> for CipherSuite {
+impl TryFrom<(u8, u8)> for CipherSuiteId {
     type Error = Mutter;
 
     fn try_from(value: (u8, u8)) -> Result<Self, Self::Error> {
         match value {
-            (0x13, 0x01) => Ok(CipherSuite::TlsAes128GcmSha256),
-            (0x13, 0x02) => Ok(CipherSuite::TlsAes256GcmSha384),
-            (0x13, 0x03) => Ok(CipherSuite::TlsChacha20Poly1305Sha256),
-            (0x13, 0x04) => Ok(CipherSuite::TlsAes128CcmSha256),
-            (0x13, 0x05) => Ok(CipherSuite::TlsAes128Ccm8Sha256),
-            _ => Err(Mutter::CipherUnsupported)
+            (0x13, 0x01) => Ok(CipherSuiteId::TlsAes128GcmSha256),
+            (0x13, 0x02) => Ok(CipherSuiteId::TlsAes256GcmSha384),
+            (0x13, 0x03) => Ok(CipherSuiteId::TlsChacha20Poly1305Sha256),
+            (0x13, 0x04) => Ok(CipherSuiteId::TlsAes128CcmSha256),
+            (0x13, 0x05) => Ok(CipherSuiteId::TlsAes128Ccm8Sha256),
+            _ => Err(Mutter::CipherUnsupported),
         }
     }
 }
@@ -59,32 +59,32 @@ impl TryFrom<(u8, u8)> for CipherSuite {
 pub type CipherSuiteCode = (u8, u8);
 
 #[allow(dead_code)]
-impl CipherSuite {
+impl CipherSuiteId {
     pub fn code(&self) -> CipherSuiteCode {
         match self {
-            CipherSuite::TlsAes128GcmSha256 => (0x13, 0x01),
-            CipherSuite::TlsAes256GcmSha384 => (0x13, 0x02),
-            CipherSuite::TlsChacha20Poly1305Sha256 => (0x13, 0x03),
-            CipherSuite::TlsAes128CcmSha256 => (0x13, 0x04),
-            CipherSuite::TlsAes128Ccm8Sha256 => (0x13, 0x05),
+            CipherSuiteId::TlsAes128GcmSha256 => (0x13, 0x01),
+            CipherSuiteId::TlsAes256GcmSha384 => (0x13, 0x02),
+            CipherSuiteId::TlsChacha20Poly1305Sha256 => (0x13, 0x03),
+            CipherSuiteId::TlsAes128CcmSha256 => (0x13, 0x04),
+            CipherSuiteId::TlsAes128Ccm8Sha256 => (0x13, 0x05),
         }
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct CipherSuites(Vec<CipherSuite>);
+pub struct CipherSuites(Vec<CipherSuiteId>);
 
 #[allow(dead_code)]
-impl TryFrom<Vec<CipherSuite>> for CipherSuites {
+impl TryFrom<Vec<CipherSuiteId>> for CipherSuites {
     type Error = Mutter;
 
-    fn try_from(cipher_suites: Vec<CipherSuite>) -> Result<Self, Mutter> {
+    fn try_from(cipher_suites: Vec<CipherSuiteId>) -> Result<Self, Mutter> {
         if !cipher_suites.is_empty() {
             let mut cipher_suite_dup: Vec<bool> = vec![true, false, false, false, false, false];
             for cs in cipher_suites.iter() {
                 let (_, cl) = cs.code();
                 if cipher_suite_dup[cl as usize] {
-                    return Err(Mutter::CipherDuplicate)
+                    return Err(Mutter::CipherDuplicate);
                 } else {
                     cipher_suite_dup[cl as usize] = true;
                 }
@@ -103,18 +103,18 @@ impl CipherSuites {
         // cipher suites - len followed by identifiers; sequence of byte-pairs.
         let cipher_suite_len: usize = ((bytes[i] as usize) << 8) | bytes[i + 1] as usize;
         if (cipher_suite_len & 1 == 1) || !(2..=10).contains(&cipher_suite_len) {
-            return Err(Mutter::CipherSuiteLen)
+            return Err(Mutter::CipherSuiteLen);
         }
         i += 2;
-        let mut cipher_suites: Vec<CipherSuite> = vec![];
+        let mut cipher_suites: Vec<CipherSuiteId> = vec![];
         let mut cipher_suite_dup = [true, false, false, false, false, false];
         for k in (0..cipher_suite_len).step_by(2) {
             let cm = bytes[i + k];
             let cl = bytes[i + 1 + k];
-            let cs = CipherSuite::try_from((cm, cl))?;
+            let cs = CipherSuiteId::try_from((cm, cl))?;
             log::info!("\tcipher_suite: {cs:#?}");
             if cipher_suite_dup[cl as usize] {
-                return Err(Mutter::CipherDuplicate)
+                return Err(Mutter::CipherDuplicate);
             } else {
                 cipher_suite_dup[cl as usize] = true;
                 cipher_suites.push(cs);
@@ -182,7 +182,7 @@ pub enum HandshakeType {
     KeyUpdate = 24,
     MessageHash = 254,
     #[default]
-    Invalid = 255
+    Invalid = 255,
 }
 
 impl From<u8> for HandshakeType {
@@ -233,7 +233,7 @@ pub enum ExtensionTypeCode {
     PostHandshakeAuth = 49,
     SignatureAlgorithmsCert = 50,
     KeyShare = 51,
-    Unused = 65535
+    Unused = 65535,
 }
 
 impl Into<u16> for ExtensionTypeCode {
@@ -295,7 +295,6 @@ pub enum SupportedGroup {
     // FFDHE4096 = 0x0102,
     // FFDHE6144 = 0x0103,
     // FFDHE8192 = 0x0104,
-
     Unused = 0xFFFF,
 }
 
@@ -312,7 +311,7 @@ impl TryFrom<u16> for SupportedGroup {
         match val {
             0x0017 => Ok(Self::Secp256r1),
             0x001D => Ok(Self::X25519),
-            _ => Err(Mutter::UnsupportedGroup)
+            _ => Err(Mutter::UnsupportedGroup),
         }
     }
 }
@@ -321,14 +320,14 @@ impl SupportedGroup {
     pub fn key_size(&self) -> usize {
         match *self {
             Self::Secp256r1 | Self::X25519 => 32,
-            _ => 0
+            _ => 0,
         }
     }
     pub fn sln(&self) -> usize {
         match *self {
             Self::Secp256r1 => 1,
             Self::X25519 => 2,
-            _ => 0
+            _ => 0,
         }
     }
 }
@@ -359,7 +358,7 @@ impl TryFrom<u16> for SignatureScheme {
             0x0403 => SignatureScheme::EcdsaSecp256r1Sha256,
             0x0804 => SignatureScheme::RsaPssRsaeSha256,
             0x0807 => SignatureScheme::Ed25519,
-            _ => return Err(Mutter::UnsupportedSignatureScheme)
+            _ => return Err(Mutter::UnsupportedSignatureScheme),
         })
     }
 }
@@ -439,5 +438,3 @@ pub fn u24_to_u8_triple(v: u32) -> (u8, u8, u8) {
     assert_eq!(bytes[0], 0);
     (bytes[1], bytes[2], bytes[3])
 }
-
-

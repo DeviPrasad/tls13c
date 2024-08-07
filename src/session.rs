@@ -26,7 +26,6 @@ pub struct AuthnSession {
     msg_ctx: Vec<u8>,
     transcript_hash: Vec<u8>,
     dh_secret: [u8; 32],
-
 }
 
 #[allow(dead_code)]
@@ -35,7 +34,7 @@ impl TlsConnection {
         let stream = TlsStream::new(&peer.tls_addr)?;
         Ok(Self {
             peer: peer.clone(),
-            stream
+            stream,
         })
     }
 }

@@ -10,6 +10,3 @@ impl KeySchedule {
         Mutter::NotImpl.into()
     }
 }
-
-
-

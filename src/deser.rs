@@ -10,10 +10,7 @@ pub(crate) struct DeSer<'a> {
 #[allow(dead_code)]
 impl<'a> DeSer<'a> {
     pub fn new(bytes: &'a [u8]) -> Self {
-        Self {
-            i: 0,
-            bytes,
-        }
+        Self { i: 0, bytes }
     }
 
     pub fn cursor(&self) -> usize {
@@ -52,7 +49,9 @@ impl<'a> DeSer<'a> {
 
     pub fn peek_u24(&self) -> u32 {
         assert!(self.cursor() + 2 < self.len());
-        ((self.bytes[self.cursor()] as u32) << 16) | ((self.bytes[self.cursor() + 1] as u32) << 8) | (self.bytes[self.cursor() + 2] as u32)
+        ((self.bytes[self.cursor()] as u32) << 16)
+            | ((self.bytes[self.cursor() + 1] as u32) << 8)
+            | (self.bytes[self.cursor() + 2] as u32)
     }
 
     // peek a 16 bit value at (cursor + offset)
@@ -72,7 +71,9 @@ impl<'a> DeSer<'a> {
     pub fn peek_u24_at(&self, i: usize) -> u32 {
         assert!(self.cursor() + i + 2 < self.len());
         let j = self.cursor() + i;
-        ((self.bytes[j] as u32) << 16) | ((self.bytes[j + 1] as u32) << 8) | (self.bytes[j + 2] as u32)
+        ((self.bytes[j] as u32) << 16)
+            | ((self.bytes[j + 1] as u32) << 8)
+            | (self.bytes[j + 2] as u32)
     }
 
     pub fn ru8(&mut self) -> u8 {

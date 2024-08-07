@@ -1,14 +1,17 @@
-use p256::{EncodedPoint as P256EncodedPoint, ecdh::EphemeralSecret as P256EphemeralSecret, ecdh::SharedSecret as P256SharedSecret, PublicKey as P256PublicKey, NistP256};
 use p256::elliptic_curve::sec1::EncodedPoint;
+use p256::{
+    ecdh::EphemeralSecret as P256EphemeralSecret, ecdh::SharedSecret as P256SharedSecret,
+    EncodedPoint as P256EncodedPoint, NistP256, PublicKey as P256PublicKey,
+};
 use rand_core::{OsRng, RngCore};
 use x25519_dalek::{
-    EphemeralSecret as X25519EphemeralSecret,
-    PublicKey as X25519PublicKey,
-    SharedSecret as X25519SharedSecret};
+    EphemeralSecret as X25519EphemeralSecret, PublicKey as X25519PublicKey,
+    SharedSecret as X25519SharedSecret,
+};
 
 use crate::err::Mutter;
 
-pub struct CryptoRandom<const N: usize> ();
+pub struct CryptoRandom<const N: usize>();
 
 #[allow(dead_code)]
 impl<const N: usize> CryptoRandom<N> {
