@@ -84,7 +84,7 @@ pub enum Mutter {
 
     BadInput = 255,
 
-    InternalError = 1024,
+    InternalError = 512,
 }
 
 impl<T> Into<Result<T, Mutter>> for Mutter {

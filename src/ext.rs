@@ -48,7 +48,6 @@ impl
     }
 }
 
-#[allow(dead_code)]
 impl ClientExtensions {
     pub fn server_name_extension(&self) -> &ServerNameExt {
         &self.0
@@ -98,7 +97,6 @@ pub struct ServerNameExt {
     name: String,
 }
 
-#[allow(dead_code)]
 impl TryFrom<&str> for ServerNameExt {
     type Error = Mutter;
     fn try_from(name: &str) -> Result<Self, Self::Error> {
@@ -110,7 +108,6 @@ impl TryFrom<&str> for ServerNameExt {
     }
 }
 
-#[allow(dead_code)]
 impl ServerNameExt {
     fn new(name: &str) -> Self {
         Self {
@@ -173,13 +170,11 @@ pub enum PeerType {
     Server,
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct SupportedVersionExt {
     ctx: PeerType,
 }
 
-#[allow(dead_code)]
 // support only version 1.3 = (0x03, 0x04)
 impl SupportedVersionExt {
     const CLIENT_EXT_SIZE: usize = 7;
@@ -191,9 +186,9 @@ impl SupportedVersionExt {
 
     pub fn size(&self) -> usize {
         if self.ctx == PeerType::Client {
-            7
+            Self::CLIENT_EXT_SIZE
         } else {
-            6
+            Self::SERVER_EXT_SIZE
         }
     }
 
@@ -248,7 +243,6 @@ impl TryFrom<(u16, &[u8])> for ServerSessionPublicKey {
     }
 }
 
-#[allow(dead_code)]
 impl ServerSessionPublicKey {
     fn new(group: SupportedGroup, public_key: Vec<u8>) -> Self {
         Self { group, public_key }
@@ -356,7 +350,6 @@ impl TryFrom<(PeerType, &[ServerSessionPublicKey])> for KeyShareExtensions {
     }
 }
 
-#[allow(dead_code)]
 impl KeyShareExtensions {
     fn new(ctx: PeerType, ext: Vec<ServerSessionPublicKey>) -> Self {
         Self(ctx, ext)
@@ -420,7 +413,6 @@ impl TryFrom<u16> for SupportedGroupExt {
     }
 }
 
-#[allow(dead_code)]
 impl SupportedGroupExt {
     fn new(g: SupportedGroup) -> Self {
         Self(g)
@@ -469,7 +461,6 @@ impl TryFrom<&[SupportedGroup]> for SupportedGroupExtensions {
     }
 }
 
-#[allow(dead_code)]
 impl SupportedGroupExtensions {
     pub fn supported_groups(&self) -> &[SupportedGroupExt] {
         &self.0
@@ -505,7 +496,6 @@ pub struct SigAlgExt {
     scheme: SignatureScheme,
 }
 
-#[allow(dead_code)]
 impl SigAlgExt {
     pub const EXT_SIZE: usize = 2;
 
@@ -565,7 +555,6 @@ impl TryFrom<&[SignatureScheme]> for SignatureSchemeExtensions {
     }
 }
 
-#[allow(dead_code)]
 impl SignatureSchemeExtensions {
     pub fn schemes(&self) -> &[SigAlgExt] {
         &self.0
@@ -596,7 +585,6 @@ impl SignatureSchemeExtensions {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Debug)]
 pub struct ServerExtensions(pub(crate) ServerSessionPublicKey);
 
@@ -612,7 +600,6 @@ impl TryFrom<Option<ServerSessionPublicKey>> for ServerExtensions {
     }
 }
 
-#[allow(dead_code)]
 impl ServerExtensions {
     // 'bytes' holds a list of extensions. The first two bytes encode the size of the list,
     pub fn deserialize(mut deser: &mut DeSer) -> Result<(ServerExtensions, usize), Mutter> {
@@ -652,9 +639,9 @@ impl ServerExtensions {
 
 #[cfg(test)]
 mod extension_test {
-    use crate::crypto::P256KeyPair;
     use crate::def::SupportedGroup;
     use crate::ext::{KeyShareExtensions, PeerType, ServerSessionPublicKey};
+    use crate::rand::P256KeyPair;
 
     #[test]
     fn test_one_key_share() {

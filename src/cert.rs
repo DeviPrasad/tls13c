@@ -26,12 +26,11 @@ pub struct CertificateEntry {
 pub struct CertificateMsg {
     head: [u8; 4],
     // cert_req_ctx.len() == 0 in the case of server authentication.
-    // 0 < cert_req_ctx.len() < 2**8 when CertificateMsg is in response to a CE\ertificateRequest.
+    // 0 < cert_req_ctx.len() < 2**8 when CertificateMsg is in response to a CertificateRequest.
     cert_req_ctx: Vec<u8>,
     cert_list: Vec<CertificateEntry>,
 }
 
-#[allow(dead_code)]
 impl CertificateMsg {
     pub fn deserialize(deser: &mut DeSer) -> Result<(Self, Vec<u8>), Mutter> {
         if !deser.have(4) {
@@ -80,9 +79,8 @@ pub struct CertificateVerifyMsg {
     signature: Vec<u8>,
 }
 
-#[allow(dead_code)]
 impl CertificateVerifyMsg {
-    pub fn deserialize(deser: &mut DeSer) -> Result<(Self, usize), Mutter> {
+    pub fn deserialize(deser: &mut DeSer) -> Result<(Self, Vec<u8>), Mutter> {
         if !deser.have(4) {
             return Mutter::DeserializationBufferInsufficient.into();
         }
@@ -109,7 +107,7 @@ impl CertificateVerifyMsg {
                     sig_scheme: sig_scheme.into(),
                     signature: sig.into(),
                 },
-                4 + len,
+                [head.as_slice(), &(sig_scheme as u16).to_be_bytes(), &sig].concat(),
             ))
         }
     }

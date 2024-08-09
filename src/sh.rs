@@ -7,7 +7,8 @@ use crate::def::{
 use crate::deser::DeSer;
 use crate::err::Mutter;
 use crate::ext::{ServerExtensions, ServerSessionPublicKey};
-use crate::protocol::{KeyExchangeSession, Tls13Record};
+use crate::rec::Tls13Record;
+use crate::session::KeyExchangeSession;
 
 #[allow(dead_code)]
 pub struct ServerHelloDeSer {}

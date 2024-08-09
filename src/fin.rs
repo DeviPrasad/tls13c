@@ -3,13 +3,14 @@ use crate::def::{HandshakeType, RecordContentType};
 use crate::deser::DeSer;
 use crate::err::Mutter;
 
+#[derive(Debug, Clone)]
 pub struct FinishedMsg {
     head: [u8; 4],
     mac: Vec<u8>,
 }
 
 impl FinishedMsg {
-    pub fn deserialize(deser: &mut DeSer) -> Result<(Self, usize), Mutter> {
+    pub fn deserialize(deser: &mut DeSer) -> Result<(Self, Vec<u8>), Mutter> {
         if !deser.have(4) {
             return Mutter::DeserializationBufferInsufficient.into();
         }
@@ -30,7 +31,7 @@ impl FinishedMsg {
                 head,
                 mac: mac.into(),
             },
-            4 + len,
+            [&head, mac].concat(),
         ))
     }
 

@@ -1,6 +1,5 @@
-use crate::def::{AlertDesc, CipherSuiteId, SignatureScheme, SupportedGroup};
+use crate::def::{CipherSuiteId, SignatureScheme, SupportedGroup};
 
-#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct PeerSessionConfig {
     pub(crate) id: String,
@@ -9,33 +8,9 @@ pub struct PeerSessionConfig {
     pub(crate) dh_groups: Vec<SupportedGroup>,
     pub(crate) cipher_suites: Vec<CipherSuiteId>,
     pub(crate) sig_algs: Vec<SignatureScheme>,
-    pub(crate) expect_good: bool,
-    pub(crate) expect_alert: Option<AlertDesc>,
 }
 
-#[allow(dead_code)]
 impl PeerSessionConfig {
-    pub fn fail(
-        name: &str,
-        tls_addr: &str,
-        path: &str,
-        dh_groups: &[SupportedGroup],
-        sig_algs: &[SignatureScheme],
-        cipher_suites: &[CipherSuiteId],
-        alert: AlertDesc,
-    ) -> Self {
-        PeerSessionConfig {
-            id: name.to_owned(),
-            tls_addr: tls_addr.to_owned(),
-            path: path.to_owned(),
-            dh_groups: dh_groups.into(),
-            cipher_suites: cipher_suites.into(),
-            sig_algs: sig_algs.into(),
-            expect_good: false,
-            expect_alert: Some(alert),
-        }
-    }
-
     pub fn good(
         name: &str,
         tls_addr: &str,
@@ -51,8 +26,6 @@ impl PeerSessionConfig {
             dh_groups: dh_groups.into(),
             cipher_suites: cipher_suites.into(),
             sig_algs: sig_algs.into(),
-            expect_good: true,
-            expect_alert: None,
         }
     }
 
@@ -89,6 +62,7 @@ impl PeerSessionConfig {
         )
     }
 
+    // session tickets post-authentication
     pub fn microsoft() -> Self {
         PeerSessionConfig::good(
             "www.microsoft.com",
@@ -114,6 +88,7 @@ impl PeerSessionConfig {
         )
     }
 
+    // no session tickets! straightforward HTTP response :)
     pub fn google() -> Self {
         PeerSessionConfig::good(
             "www.google.com",
@@ -125,6 +100,7 @@ impl PeerSessionConfig {
         )
     }
 
+    // session tickets post-authentication
     pub fn apple() -> Self {
         PeerSessionConfig::good(
             "www.apple.com",
@@ -147,6 +123,7 @@ impl PeerSessionConfig {
         )
     }
 
+    // session tickets post-authentication
     pub fn github() -> Self {
         PeerSessionConfig::good(
             "github.com",
@@ -161,6 +138,7 @@ impl PeerSessionConfig {
         )
     }
 
+    // no session tickets
     pub fn x() -> Self {
         PeerSessionConfig::good(
             "x.com",
@@ -172,6 +150,7 @@ impl PeerSessionConfig {
         )
     }
 
+    // no session tickets.
     pub fn lets_encrypt() -> Self {
         PeerSessionConfig::good(
             "letsencrypt.org",
@@ -186,6 +165,7 @@ impl PeerSessionConfig {
         )
     }
 
+    // session tickets post-authentication
     pub fn india() -> Self {
         PeerSessionConfig::good(
             "www.india.gov.in",
@@ -197,6 +177,7 @@ impl PeerSessionConfig {
         )
     }
 
+    // session tickets post-authentication
     pub fn mozilla() -> Self {
         PeerSessionConfig::good(
             "www.mozilla.org",
@@ -208,6 +189,7 @@ impl PeerSessionConfig {
         )
     }
 
+    // session tickets post-authentication
     pub fn usa() -> Self {
         PeerSessionConfig::good(
             "www.usa.gov",

@@ -1,7 +1,7 @@
 use crate::def::RecordContentType;
 use crate::deser::DeSer;
 use crate::err::Mutter;
-use crate::protocol::Tls13Record;
+use crate::rec::Tls13Record;
 
 #[derive(Debug)]
 pub struct ChangeCipherSpecMsg {}
