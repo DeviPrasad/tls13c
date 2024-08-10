@@ -136,6 +136,7 @@ impl ServerNameExt {
         }
     }
 
+    #[allow(unused)]
     pub fn deserialize(ctx: PeerType, bytes: &[u8], i: usize) -> Result<(Self, usize), Mutter> {
         let inp_size = bytes.len();
         if ctx != PeerType::Client || inp_size < 9 {
@@ -359,10 +360,6 @@ impl KeyShareExtensions {
         self.0 == PeerType::Client
     }
 
-    pub fn server(&self) -> bool {
-        self.0 == PeerType::Server
-    }
-
     pub fn extensions(&self) -> &[ServerSessionPublicKey] {
         &self.1
     }
@@ -497,6 +494,7 @@ pub struct SigAlgExt {
 }
 
 impl SigAlgExt {
+    #[allow(unused)]
     pub const EXT_SIZE: usize = 2;
 
     fn new(scheme: SignatureScheme) -> Self {
@@ -507,6 +505,7 @@ impl SigAlgExt {
         2
     }
 
+    #[allow(dead_code)]
     pub fn deserialize(ctx: PeerType, bytes: &[u8], i: usize) -> Result<(Self, usize), Mutter> {
         if ctx != PeerType::Client || i + Self::EXT_SIZE > bytes.len() {
             Err(Mutter::BadInput)
@@ -640,8 +639,8 @@ impl ServerExtensions {
 #[cfg(test)]
 mod extension_test {
     use crate::def::SupportedGroup;
+    use crate::ecdhe::P256KeyPair;
     use crate::ext::{KeyShareExtensions, PeerType, ServerSessionPublicKey};
-    use crate::rand::P256KeyPair;
 
     #[test]
     fn test_one_key_share() {

@@ -10,21 +10,34 @@ use crate::stream::TlsConnection;
 pub fn client_main() -> Result<(), Mutter> {
     logger::init_logger(true);
 
-    Ok(&PeerSessionConfig::dicp())
-        .and_then(|peer| Ok((peer, tls_connect(&peer)?)))
+    Ok(&PeerSessionConfig::microsoft())
+        .and_then(|peer| Ok((peer, tls_connect(peer)?)))
         .and_then(|(peer, mut app_session)| {
             http_get(&peer.path, &peer.id, &mut app_session)?;
             Ok(app_session)
         })
-        .and_then(|mut app_session| {
-            read_http_response(&mut app_session);
+        .map(|mut app_session| {
+            let mut resp = vec![0; 4096];
+            let mut i = 0;
+            while i < 4 {
+                if let Ok(n) = read_http_response(&mut app_session, &mut resp) {
+                    if n > 0 {
+                        eprint!("{:#}", String::from_utf8_lossy(resp.as_slice()));
+                        i += 1;
+                    } else {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+            eprintln!();
             tls_shutdown(&mut app_session);
-            Ok(())
         })
 }
 
 pub fn tls_connect(peer: &PeerSessionConfig) -> Result<AppSession, Mutter> {
-    TlsConnection::with_peer(&peer).and_then(|tls_conn| {
+    TlsConnection::with_peer(peer).and_then(|tls_conn| {
         log::info!("TLS 1.3 peer: ({})", peer.tls_addr);
 
         let mut key_exchange_session = KeyExchangeSession::new(tls_conn.stream);
@@ -39,28 +52,26 @@ pub fn tls_connect(peer: &PeerSessionConfig) -> Result<AppSession, Mutter> {
                 // [x25519_key_share].as_slice()
                 // [p256_key_share, x25519_key_share].as_slice()
                 [dh.x25519_key_share(), dh.p256_key_share()].as_slice(),
-            ))
-            .unwrap();
+            ))?;
             let ch = ClientHelloMsg::try_from(
                 key_exchange_session.random(),
                 peer.cipher_suites.to_vec(),
                 extensions_data.clone(),
-            )
-            .unwrap();
+            )?;
             log::info!("ClientHello sent");
             ch
         };
 
-        let _ = key_exchange_session.client_hello(&ch)?;
+        key_exchange_session.client_hello(&ch)?;
         let sh = key_exchange_session.read_server_hello()?;
 
         key_exchange_session.read_change_cipher_spec()?;
 
-        let serv_key_share = sh.key_share(&ch.key_shares()).expect("public key for DH");
+        let serv_key_share = sh.key_share(ch.key_shares()).expect("public key for DH");
         let mut auth_session =
             key_exchange_session.authentication_session(sh.cipher_suite_id, serv_key_share, dh)?;
 
-        MessageAuthenticator::authenticate(&mut auth_session);
+        MessageAuthenticator::authenticate(&mut auth_session)?;
 
         // send client Finish message
         auth_session.send_client_finished()?;
@@ -79,20 +90,8 @@ fn http_get(path: &str, host: &str, session: &mut AppSession) -> Result<usize, M
     session.send(http_req_plaintext.as_bytes())
 }
 
-fn read_http_response(session: &mut AppSession) {
-    // read the server response
-    loop {
-        let mut response = Vec::new();
-        if let Ok(n) = session.read(&mut response) {
-            if n > 0 {
-                eprint!("{:#}", String::from_utf8_lossy(&response));
-            } else {
-                break;
-            }
-        } else {
-            break;
-        }
-    }
+fn read_http_response(session: &mut AppSession, response: &mut Vec<u8>) -> Result<usize, Mutter> {
+    session.read(response)
 }
 
 fn tls_shutdown(session: &mut AppSession) {

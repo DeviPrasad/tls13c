@@ -74,7 +74,7 @@ impl KeyExchangeSession {
             return Mutter::ExpectingServerHello.into();
         }
         let mut deser = DeSer::new(&self.hello_msg_buf);
-        let (sh, off) = ServerHelloMsg::deserialize(&mut deser).unwrap();
+        let (sh, off) = ServerHelloMsg::deserialize(&mut deser)?;
         assert_eq!(off, Tls13Record::SIZE);
         self.hello_msg_end = Tls13Record::SIZE + sh.fragment_len as usize;
         self.msg_ctx
@@ -90,14 +90,14 @@ impl KeyExchangeSession {
     }
 
     pub fn read_change_cipher_spec(&mut self) -> Result<usize, Mutter> {
-        if self.hs_buf_available() < Tls13Record::SIZE + 1 {
-            if !try_fetch::<Tls13Record>(
+        if self.hs_buf_available() < Tls13Record::SIZE + 1
+            && !try_fetch::<Tls13Record>(
                 &mut self.serv_stream,
                 &mut self.hello_msg_buf,
                 Tls13Record::SIZE + 1,
-            ) {
-                return Mutter::ExpectingChangeCipherSpec.into();
-            }
+            )
+        {
+            return Mutter::ExpectingChangeCipherSpec.into();
         }
         let mut deser = DeSer::new(&self.hello_msg_buf[self.hello_msg_end..]);
         if let Some((_, size)) = ChangeCipherSpecMsg::deserialize(&mut deser)? {
@@ -179,10 +179,10 @@ pub struct AuthenticationSession {
 
 impl AuthProc for EncryptedExtensionsMsg {
     fn authenticate(
-        mut deser: &mut DeSer,
+        deser: &mut DeSer,
         session: &mut AuthenticationSession,
     ) -> Result<(AuthMsgType, Vec<u8>), Mutter> {
-        EncryptedExtensionsMsg::deserialize(&mut deser)
+        EncryptedExtensionsMsg::deserialize(deser)
             .map(|(enc_ext_msg, msg_slice)| {
                 if deser.peek_u8() == RecordContentType::Handshake as u8 {
                     deser.ru8();
@@ -200,10 +200,10 @@ impl AuthProc for EncryptedExtensionsMsg {
 
 impl AuthProc for FinishedMsg {
     fn authenticate(
-        mut deser: &mut DeSer,
+        deser: &mut DeSer,
         session: &mut AuthenticationSession,
     ) -> Result<(AuthMsgType, Vec<u8>), Mutter> {
-        FinishedMsg::deserialize(&mut deser).and_then(|(serv_fin_msg, msg_slice)| {
+        FinishedMsg::deserialize(deser).and_then(|(serv_fin_msg, msg_slice)| {
             // verify the MAC in the Server Finished message
             session
                 .server_finished_mac()
@@ -239,10 +239,10 @@ impl AuthProc for FinishedMsg {
 
 impl AuthProc for CertificateMsg {
     fn authenticate(
-        mut deser: &mut DeSer,
+        deser: &mut DeSer,
         session: &mut AuthenticationSession,
     ) -> Result<(AuthMsgType, Vec<u8>), Mutter> {
-        CertificateMsg::deserialize(&mut deser)
+        CertificateMsg::deserialize(deser)
             .map(|(cert_msg, msg_slice)| {
                 if deser.peek_u8() == RecordContentType::Handshake as u8 {
                     deser.ru8();
@@ -260,10 +260,10 @@ impl AuthProc for CertificateMsg {
 
 impl AuthProc for CertificateVerifyMsg {
     fn authenticate(
-        mut deser: &mut DeSer,
+        deser: &mut DeSer,
         session: &mut AuthenticationSession,
     ) -> Result<(AuthMsgType, Vec<u8>), Mutter> {
-        CertificateVerifyMsg::deserialize(&mut deser)
+        CertificateVerifyMsg::deserialize(deser)
             .map(|(cert_verify_msg, msg_slice)| {
                 if deser.peek_u8() == RecordContentType::Handshake as u8 {
                     deser.ru8();
@@ -315,22 +315,15 @@ impl<'a> MessageAuthenticator<'a> {
         }),
     ];
 
-    pub fn new(buf: &'a [u8]) -> Self {
+    pub fn new(buf: &'a [u8], pos: usize) -> Self {
         Self {
-            deser: DeSer::new(&buf),
-            proc: 0,
+            deser: DeSer::new(buf),
+            proc: pos,
         }
     }
 
-    pub fn forward(self, buf: &'a [u8]) -> Self {
-        Self {
-            deser: DeSer::new(&buf),
-            proc: self.proc,
-        }
-    }
-
-    pub fn finished(&self) -> bool {
-        self.pos() == Self::MSG_TYPE_AUTH_PROCS.len()
+    pub fn finished(pos: usize) -> bool {
+        pos >= Self::MSG_TYPE_AUTH_PROCS.len()
     }
 
     pub fn plaintext(&self) -> Option<()> {
@@ -364,35 +357,33 @@ impl<'a> MessageAuthenticator<'a> {
         self.proc += 1
     }
 
-    pub fn authenticate(session: &mut AuthenticationSession) -> bool {
-        let mut authenticator = Self::default();
-        while !authenticator.finished() {
+    pub fn authenticate(session: &mut AuthenticationSession) -> Result<(), Mutter> {
+        let mut pos = 0;
+        while !MessageAuthenticator::finished(pos) {
             let ciphertext_rec = session
                 .read_ciphertext_record()
                 .expect("handshake message ciphertext");
             // decrypt and cache TlsInnerPlaintext records
-            let ad = ciphertext_rec[0..5].to_vec();
+            let aad = ciphertext_rec[0..5].to_vec();
             let mut dec_data_buf = ciphertext_rec[5..].to_vec();
-            session
-                .decrypt_next(&ad, &mut dec_data_buf)
-                .expect("decrypted handshake data");
-            assert!(dec_data_buf.len() < ciphertext_rec.len() - 5);
+            session.decrypt_next(&aad, &mut dec_data_buf)?;
+            // 16 bytes of authentication tag + 5 bytes of aad
+            assert_eq!(dec_data_buf.len(), ciphertext_rec.len() - (16 + aad.len()));
 
             // iterate and process each inner_plaintext_rec in the cache
-            authenticator = authenticator.forward(dec_data_buf.leak());
-            while authenticator.plaintext().is_some() {
-                let _res = authenticator.authenticate_next(session);
+            let mut auth = MessageAuthenticator::new(&dec_data_buf, pos);
+            while auth.plaintext().is_some() {
+                if let Err(e) = auth.authenticate_next(session) {
+                    return e.into();
+                }
             }
+            pos = auth.pos();
         }
-        true
+        Ok(())
     }
 }
 
 impl AuthenticationSession {
-    pub fn receive(&mut self, size: usize, mut data: &mut Vec<u8>) -> Result<usize, Mutter> {
-        self.serv_stream.read(size, &mut data)
-    }
-
     pub fn send(&mut self, data: &[u8]) -> Result<usize, Mutter> {
         self.serv_stream.write(data)
     }
@@ -511,10 +502,6 @@ pub struct AppSession {
 }
 
 impl AppSession {
-    pub fn receive(&mut self, size: usize, mut data: &mut Vec<u8>) -> Result<usize, Mutter> {
-        self.serv_stream.read(size, &mut data)
-    }
-
     fn send_ciphertext(&mut self, data: &[u8]) -> Result<usize, Mutter> {
         self.serv_stream.write(data)
     }

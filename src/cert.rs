@@ -111,13 +111,4 @@ impl CertificateVerifyMsg {
             ))
         }
     }
-
-    pub fn to_vec(&self) -> Vec<u8> {
-        [
-            self.head.as_slice(),
-            (self.sig_scheme as u16).to_be_bytes().as_slice(),
-            self.signature.as_slice(),
-        ]
-        .concat()
-    }
 }

@@ -18,11 +18,7 @@ impl ChangeCipherSpecMsg {
                 Mutter::ExpectingChangeCipherSpec.into()
             }
         } else {
-            return Ok(None);
+            Ok(None)
         }
-    }
-
-    pub fn bytes<'a>() -> &'a [u8] {
-        [0x20, 0x03, 0x03, 0x00, 0x01, 0x01].as_slice()
     }
 }

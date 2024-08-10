@@ -5,7 +5,6 @@ use crate::err::Mutter;
 
 #[derive(Debug, Clone)]
 pub struct FinishedMsg {
-    head: [u8; 4],
     mac: Vec<u8>,
 }
 
@@ -28,7 +27,6 @@ impl FinishedMsg {
         let mac = deser.slice(len);
         Ok((
             FinishedMsg {
-                head,
                 mac: mac.into(),
             },
             [&head, mac].concat(),
@@ -51,9 +49,5 @@ impl FinishedMsg {
         } else {
             Mutter::FinishMsgVerificationFailed.into()
         }
-    }
-
-    pub fn to_vec(&self) -> Vec<u8> {
-        [self.head.as_slice(), self.mac.as_slice()].concat()
     }
 }

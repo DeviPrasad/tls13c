@@ -10,6 +10,7 @@ pub struct PeerSessionConfig {
     pub(crate) sig_algs: Vec<SignatureScheme>,
 }
 
+#[allow(dead_code)]
 impl PeerSessionConfig {
     pub fn good(
         name: &str,
