@@ -10,7 +10,7 @@ use crate::stream::TlsConnection;
 pub fn client_main() -> Result<(), Mutter> {
     logger::init_logger(true);
 
-    Ok(&PeerSessionConfig::microsoft())
+    Ok(&PeerSessionConfig::github())
         .and_then(|peer| Ok((peer, tls_connect(peer)?)))
         .and_then(|(peer, mut app_session)| {
             http_get(&peer.path, &peer.id, &mut app_session)?;

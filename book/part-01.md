@@ -51,7 +51,11 @@ In this document (`DICP - Part 1`), we will study the technical aspects of imple
 
 
 ### The Handshake Protocol
-The first improtant sub-protocol in TLS 1.3 is the *Key Exchange* protocol. In Figure 1, this includes two messages:
+The handshake (sub)protocol is the most important part of TLS. Undoubtedy, the designers spent significant effort in improving its efficiency compared to TLS 1.2. Most of the security guarantees of TLS is deined by the handshake protocol. Section 4 of RFC 8446 (about 54 pages of text) is entitely dedicated for describing the messages and interactions constituting handshake protocol. Even the appendices in the RFC discuss, at length, the security aspects of the handshake protocol.
+
+#### Key Exchange
+
+Within the handshake protocol, *Key Exchange* is the first phase. In Figure 1 above, this includes two messages:
 
 1. ClientHello
     - the very first message of the protocol.
@@ -65,6 +69,17 @@ The first improtant sub-protocol in TLS 1.3 is the *Key Exchange* protocol. In F
     - includes server's public key for elliptic-curve Diffie-Hellman exhange.
     - includes a 32 byte random number indicating server's session freshness.
 
-At the end of key exchange, the client and server establish the first set of shared secrets used for encrypting (protecting) the messages that follow. In addition, the cliet and server indicate the cryptographic algorithms - ciphersuite - selected for the rest of the session.
+At the end of key exchange, the client and server establish a set of shared secrets used for encrypting (protecting) messages that follow. In addition, the client and server agree upon the cryptographic algorithms (aka ciphersuite) which will be in force for the rest of the session.
 
+
+#### Server Parameters
+This message immediately follows ServerHello, and it indicates server's preferences. The server may indicate that the client needs to authenticate (using client's certificate) 
+
+#### Authentication
 indicates that server authentication uses three messages: Certificate, CertificateVerify, and Finished.
+
+
+
+#### ClientHello
+
+![client_hello_layout](./images/client_hello_layout.png)
