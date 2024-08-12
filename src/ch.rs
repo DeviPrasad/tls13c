@@ -74,7 +74,10 @@ impl ClientHelloMsg {
         // see ClientHello message layout diagram in dicp book to understand why
         // the numbers make sense in the following assertion.
         // the diagram assumes cipher suite length = 6, which may be less than that in our examples.
-        assert_eq!(self.size(), 56 + self.extensions.size() - (6 - 2 * self.cipher_suites.count()));
+        assert_eq!(
+            self.size(),
+            56 + self.extensions.size() - (6 - 2 * self.cipher_suites.count())
+        );
 
         // first five bytes of the message hold content_type, legacy_version, and fragment_len.
         let frag_len: u16 = self.size() as u16 - 5;

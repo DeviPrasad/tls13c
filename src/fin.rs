@@ -25,12 +25,7 @@ impl FinishedMsg {
             .try_into()
             .map_err(|_| Mutter::InternalError)?;
         let mac = deser.slice(len);
-        Ok((
-            FinishedMsg {
-                mac: mac.into(),
-            },
-            [&head, mac].concat(),
-        ))
+        Ok((FinishedMsg { mac: mac.into() }, [&head, mac].concat()))
     }
 
     pub fn serialize(tag: Vec<u8>) -> Vec<u8> {

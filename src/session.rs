@@ -9,17 +9,15 @@ use crate::enc_ext::EncryptedExtensionsMsg;
 use crate::err::Mutter;
 use crate::ext::ServerSessionPublicKey;
 use crate::fin::FinishedMsg;
-use crate::rand;
 use crate::rec::{try_fetch, Tls13Ciphertext, Tls13InnerPlaintext, Tls13Record};
 use crate::sh::ServerHelloMsg;
 use crate::stream::{Stream, TlsStream};
 
 pub struct KeyExchangeSession {
-    pub(crate) serv_stream: TlsStream,
-    random: Vec<u8>,
+    serv_stream: TlsStream,
     msg_ctx: Vec<u8>,
-    hello_msg_buf: Vec<u8>,
-    hello_msg_end: usize,
+    msg_buf: Vec<u8>,
+    cursor: usize,
 }
 
 #[allow(dead_code)]
@@ -32,23 +30,14 @@ impl KeyExchangeSession {
     pub fn new(serv_stream: TlsStream) -> Self {
         Self {
             serv_stream,
-            random: rand::CryptoRandom::<32>::bytes().to_vec(),
             msg_ctx: vec![],
-            hello_msg_buf: vec![],
-            hello_msg_end: 0,
+            msg_buf: vec![],
+            cursor: 0,
         }
     }
 
-    pub fn send(&mut self, data: &[u8]) -> Result<usize, Mutter> {
+    fn send(&mut self, data: &[u8]) -> Result<usize, Mutter> {
         self.serv_stream.write(data)
-    }
-
-    pub fn random(&mut self) -> [u8; 32] {
-        self.random.clone().try_into().unwrap()
-    }
-
-    pub fn update_msg_ctx(&mut self, bytes: Vec<u8>) {
-        self.msg_ctx.extend(bytes)
     }
 
     pub fn client_hello(&mut self, ch: &ClientHelloMsg) -> Result<(), Mutter> {
@@ -57,52 +46,47 @@ impl KeyExchangeSession {
         let _n = self.serv_stream.write(&ch_msg)?;
         assert_eq!(_n, ch.size());
 
-        self.msg_ctx
-            .extend_from_slice(&ch_msg[Tls13Record::SIZE..ch.size()]);
+        self.msg_ctx.extend(&ch_msg[Tls13Record::SIZE..ch.size()]);
 
         Ok(())
     }
 
     pub fn read_server_hello(&mut self) -> Result<ServerHelloMsg, Mutter> {
-        self.hello_msg_buf = Vec::new();
-        if !try_fetch::<Tls13Record>(
-            &mut self.serv_stream,
-            &mut self.hello_msg_buf,
-            Tls13Record::SIZE,
-        ) {
+        self.msg_buf = Vec::new();
+        if !try_fetch::<Tls13Record>(&mut self.serv_stream, &mut self.msg_buf, Tls13Record::SIZE) {
             log::error!("Bad handshake record - expecting ServerHello.");
-            return Mutter::ExpectingServerHello.into();
-        }
-        let mut deser = DeSer::new(&self.hello_msg_buf);
-        let (sh, off) = ServerHelloMsg::deserialize(&mut deser)?;
-        assert_eq!(off, Tls13Record::SIZE);
-        self.hello_msg_end = Tls13Record::SIZE + sh.fragment_len as usize;
-        self.msg_ctx
-            .extend_from_slice(&self.hello_msg_buf[Tls13Record::SIZE..self.hello_msg_end]);
+            Mutter::ExpectingServerHello.into()
+        } else {
+            let mut deser = DeSer::new(&self.msg_buf);
+            let (sh, _) = ServerHelloMsg::deserialize(&mut deser)?;
+            self.cursor = Tls13Record::SIZE + sh.fragment_len as usize;
+            self.msg_ctx
+                .extend(&self.msg_buf[Tls13Record::SIZE..self.cursor]);
 
-        log::info!("ServerHello - Validated");
-        Ok(sh)
+            log::info!("ServerHello - Validated");
+            Ok(sh)
+        }
     }
 
     fn hs_buf_available(&self) -> usize {
-        assert!(self.hello_msg_end <= self.hello_msg_buf.len());
-        self.hello_msg_buf.len() - self.hello_msg_end
+        assert!(self.cursor <= self.msg_buf.len());
+        self.msg_buf.len() - self.cursor
     }
 
-    pub fn read_change_cipher_spec(&mut self) -> Result<usize, Mutter> {
+    pub fn read_optional_change_cipher_spec(&mut self) -> Result<usize, Mutter> {
         if self.hs_buf_available() < Tls13Record::SIZE + 1
             && !try_fetch::<Tls13Record>(
                 &mut self.serv_stream,
-                &mut self.hello_msg_buf,
+                &mut self.msg_buf,
                 Tls13Record::SIZE + 1,
             )
         {
             return Mutter::ExpectingChangeCipherSpec.into();
         }
-        let mut deser = DeSer::new(&self.hello_msg_buf[self.hello_msg_end..]);
+        let mut deser = DeSer::new(&self.msg_buf[self.cursor..]);
         if let Some((_, size)) = ChangeCipherSpecMsg::deserialize(&mut deser)? {
             log::info!("ChangeCipherSpec - Found");
-            self.hello_msg_end += size;
+            self.cursor += size;
         } else {
             log::info!("ChangeCipherSpec - Not Found");
         }
@@ -145,7 +129,7 @@ impl KeyExchangeSession {
         Ok(AuthenticationSession {
             serv_stream: self.serv_stream,
             msg_ctx: self.msg_ctx,
-            hs_msg_buf: self.hello_msg_buf[self.hello_msg_end..].into(),
+            hs_msg_buf: self.msg_buf[self.cursor..].into(),
             ciphertext_rec_end: 0,
             secrets,
         })
@@ -154,7 +138,7 @@ impl KeyExchangeSession {
 
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
-pub enum AuthMsgType {
+enum AuthMsgType {
     EncExt(EncryptedExtensionsMsg),
     Cert(CertificateMsg),
     CertVerify(CertificateVerifyMsg),
@@ -162,7 +146,7 @@ pub enum AuthMsgType {
 }
 
 // On success, returns the plaintext message bytes as the transcript
-pub(crate) trait AuthProc {
+trait AuthProc {
     fn authenticate(
         deser: &mut DeSer,
         session: &mut AuthenticationSession,
@@ -315,18 +299,18 @@ impl<'a> MessageAuthenticator<'a> {
         }),
     ];
 
-    pub fn new(buf: &'a [u8], pos: usize) -> Self {
+    fn new(buf: &'a [u8], pos: usize) -> Self {
         Self {
             deser: DeSer::new(buf),
             proc: pos,
         }
     }
 
-    pub fn finished(pos: usize) -> bool {
+    fn finished(pos: usize) -> bool {
         pos >= Self::MSG_TYPE_AUTH_PROCS.len()
     }
 
-    pub fn plaintext(&self) -> Option<()> {
+    fn plaintext(&self) -> Option<()> {
         if self.deser.available() > 0 {
             Some(())
         } else {
@@ -334,7 +318,7 @@ impl<'a> MessageAuthenticator<'a> {
         }
     }
 
-    pub fn authenticate_next(&mut self, session: &mut AuthenticationSession) -> MsgAuthResult {
+    fn authenticate_next(&mut self, session: &mut AuthenticationSession) -> MsgAuthResult {
         assert!(self.pos() < Self::MSG_TYPE_AUTH_PROCS.len());
         (
             self.auth_proc()(&mut self.deser, session),
@@ -384,23 +368,23 @@ impl<'a> MessageAuthenticator<'a> {
 }
 
 impl AuthenticationSession {
-    pub fn send(&mut self, data: &[u8]) -> Result<usize, Mutter> {
+    fn send(&mut self, data: &[u8]) -> Result<usize, Mutter> {
         self.serv_stream.write(data)
     }
 
-    pub fn update_msg_ctx(&mut self, bytes: &Vec<u8>) {
+    fn update_msg_ctx(&mut self, bytes: &Vec<u8>) {
         self.msg_ctx.extend(bytes)
     }
 
-    pub fn digest_size(&self) -> usize {
+    fn digest_size(&self) -> usize {
         self.secrets.digest_size()
     }
 
-    pub fn decrypt_next(&mut self, ad: &[u8], out: &mut Vec<u8>) -> Result<(), Mutter> {
+    fn decrypt_next(&mut self, ad: &[u8], out: &mut Vec<u8>) -> Result<(), Mutter> {
         self.secrets.decrypt_next(ad, out)
     }
 
-    pub fn encrypt_next(&mut self, ad: &[u8], out: &mut Vec<u8>) -> Result<(), Mutter> {
+    fn encrypt_next(&mut self, ad: &[u8], out: &mut Vec<u8>) -> Result<(), Mutter> {
         self.secrets.encrypt_next(ad, out)
     }
 
@@ -409,7 +393,7 @@ impl AuthenticationSession {
         self.hs_msg_buf.len() - self.ciphertext_rec_end
     }
 
-    pub fn read_ciphertext_record(&mut self) -> Result<Vec<u8>, Mutter> {
+    fn read_ciphertext_record(&mut self) -> Result<Vec<u8>, Mutter> {
         let start = self.ciphertext_rec_end;
         if self.hs_buf_available() < Tls13Ciphertext::SIZE {
             let need = Tls13Ciphertext::SIZE - self.hs_buf_available();
@@ -458,11 +442,11 @@ impl AuthenticationSession {
             .and_then(|fin_msg| self.send(&Tls13Ciphertext::serialize(fin_msg)))
     }
 
-    pub fn server_finished_mac(&self) -> Result<Vec<u8>, Mutter> {
+    fn server_finished_mac(&self) -> Result<Vec<u8>, Mutter> {
         self.secrets.server_finished_mac(&self.msg_ctx)
     }
 
-    pub fn client_finished_mac(&self) -> Result<Vec<u8>, Mutter> {
+    fn client_finished_mac(&self) -> Result<Vec<u8>, Mutter> {
         self.secrets.client_finished_mac(&self.msg_ctx)
     }
 
@@ -495,7 +479,7 @@ impl AuthenticationSession {
 }
 
 pub struct AppSession {
-    pub(crate) serv_stream: TlsStream,
+    serv_stream: TlsStream,
     secrets: AppTrafficSecrets,
     buf: Vec<u8>,
     pos: usize,
@@ -506,36 +490,12 @@ impl AppSession {
         self.serv_stream.write(data)
     }
 
-    pub fn decrypt_next(&mut self, ad: &[u8], out: &mut Vec<u8>) -> Result<(), Mutter> {
+    fn decrypt_next(&mut self, ad: &[u8], out: &mut Vec<u8>) -> Result<(), Mutter> {
         self.secrets.decrypt_next(ad, out)
     }
 
-    pub fn encrypt_next(&mut self, ad: &[u8], out: &mut Vec<u8>) -> Result<(), Mutter> {
+    fn encrypt_next(&mut self, ad: &[u8], out: &mut Vec<u8>) -> Result<(), Mutter> {
         self.secrets.encrypt_next(ad, out)
-    }
-
-    // plaintext 'data' is encrypted and sent.
-    pub fn send(&mut self, data: &[u8]) -> Result<usize, Mutter> {
-        let [l1, l2] = (data.len() as u16 + 16 + 1).to_be_bytes();
-        // cipher text
-        let mut ct: Vec<u8> = [
-            RecordContentType::ApplicationData as u8,
-            0x03,
-            0x03, // legacy record version
-            l1,
-            l2, // length of the inner plaintext in big-endian
-        ]
-        .into();
-
-        // copy data so we can encrypt it in place
-        let mut enc_data = data.to_vec();
-        enc_data.push(RecordContentType::ApplicationData as u8);
-        self.encrypt_next(&ct[0..5], &mut enc_data)?;
-        assert_eq!(enc_data.len(), data.len() + 16 + 1);
-        ct.extend(enc_data);
-        assert_eq!(ct.len(), data.len() + 16 + 5 + 1);
-
-        self.send_ciphertext(&ct)
     }
 
     fn buf_available(&self) -> usize {
@@ -543,7 +503,7 @@ impl AppSession {
         self.buf.len() - self.pos
     }
 
-    pub fn read_ciphertext_record(&mut self, data: &mut Vec<u8>) -> Result<usize, Mutter> {
+    fn read_ciphertext_record(&mut self, data: &mut Vec<u8>) -> Result<usize, Mutter> {
         if self.buf_available() < Tls13Ciphertext::SIZE {
             let need = Tls13Ciphertext::SIZE - self.buf_available();
             if !try_fetch::<Tls13Ciphertext>(&mut self.serv_stream, &mut self.buf, need) {
@@ -575,6 +535,30 @@ impl AppSession {
 
         data.extend(&decrypted);
         Ok(decrypted.len())
+    }
+
+    // plaintext 'data' is encrypted and sent.
+    pub fn send(&mut self, data: &[u8]) -> Result<usize, Mutter> {
+        let [l1, l2] = (data.len() as u16 + 16 + 1).to_be_bytes();
+        // cipher text
+        let mut ct: Vec<u8> = [
+            RecordContentType::ApplicationData as u8,
+            0x03,
+            0x03, // legacy record version
+            l1,
+            l2, // length of the inner plaintext in big-endian
+        ]
+        .into();
+
+        // copy data so we can encrypt it in place
+        let mut enc_data = data.to_vec();
+        enc_data.push(RecordContentType::ApplicationData as u8);
+        self.encrypt_next(&ct[0..5], &mut enc_data)?;
+        assert_eq!(enc_data.len(), data.len() + 16 + 1);
+        ct.extend(enc_data);
+        assert_eq!(ct.len(), data.len() + 16 + 5 + 1);
+
+        self.send_ciphertext(&ct)
     }
 
     pub fn read(&mut self, data: &mut Vec<u8>) -> Result<usize, Mutter> {

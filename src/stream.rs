@@ -24,17 +24,16 @@ impl TlsStream {
             .to_socket_addrs()
             .map_err(|_| Mutter::BadNetworkAddress)?;
         for serv_sock_addr in server_sock_addresses {
-            let sock =
-                TcpStream::connect(serv_sock_addr).map_err(|_| Mutter::SocketPropertyError)?;
-            sock.set_read_timeout(Some(Duration::from_millis(5)))
-                .map_err(|e| {
+            match TcpStream::connect(serv_sock_addr) {
+                Ok(sock) => match sock.set_read_timeout(Some(Duration::from_millis(5))) {
+                    Ok(_) => return Ok(Self { stream: sock }),
+                    Err(e) => log::error!("error: {e:#?}"),
+                },
+                Err(e) => {
                     log::error!("error: {e:#?}");
-                    Mutter::StreamReadinessError.into()
-                })?;
-
-            return Ok(Self { stream: sock });
+                }
+            }
         }
-
         Err(Mutter::TlsConnection)
     }
 
