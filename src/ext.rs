@@ -100,7 +100,7 @@ pub struct ServerNameExt {
 impl TryFrom<&str> for ServerNameExt {
     type Error = Mutter;
     fn try_from(name: &str) -> Result<Self, Self::Error> {
-        if name.len() > 0 && name.len() < 64 {
+        if !name.is_empty() && name.len() < 64 {
             Ok(ServerNameExt::new(name))
         } else {
             Err(Mutter::InvalidExtensionData)
@@ -274,14 +274,14 @@ impl ServerSessionPublicKey {
             match self.group {
                 SupportedGroup::Secp256r1 | SupportedGroup::X25519 => {
                     // 1. 2 bytes for curve/group id.
-                    (bytes[i + 0], bytes[i + 1]) = u16_to_u8_pair(self.group as u16); // group id
-                                                                                      // 2. 2 bytes for the length of the key that follows
+                    (bytes[i], bytes[i + 1]) = u16_to_u8_pair(self.group as u16); // group id
+                                                                                  // 2. 2 bytes for the length of the key that follows
                     (bytes[i + 2], bytes[i + 3]) = u16_to_u8_pair(self.public_key.len() as u16);
                     // 3. bytes representing the key
                     bytes[i + 4..i + 4 + self.public_key.len()].copy_from_slice(&self.public_key); // the key bytes
                     self.size()
                 }
-                _ => return 0,
+                _ => 0,
             }
         }
     }
@@ -308,8 +308,7 @@ impl ServerSessionPublicKey {
                     }
                 } else if curve == SupportedGroup::Secp256r1.into() {
                     let key = deser.slice(key_len.into());
-                    let key_ext =
-                        Self::secp256r1(key.try_into().map_err(|_| Mutter::Secp256r1KeyLenBad)?);
+                    let key_ext = Self::secp256r1(key);
                     Ok((key_ext, ext_data_len as usize + 4))
                 } else {
                     Mutter::UnsupportedGroup.into()
@@ -330,9 +329,9 @@ impl TryFrom<(PeerType, &[ServerSessionPublicKey])> for KeyShareExtensions {
     type Error = Mutter;
 
     fn try_from((ctx, key_shares): (PeerType, &[ServerSessionPublicKey])) -> Result<Self, Mutter> {
-        if ctx == PeerType::Server && key_shares.len() != 1 {
-            Mutter::BadInput.into()
-        } else if ctx == PeerType::Client && key_shares.len() == 0 {
+        if ctx == PeerType::Server && key_shares.len() != 1
+            || ctx == PeerType::Client && key_shares.is_empty()
+        {
             Mutter::BadInput.into()
         } else {
             let mut dup = [true, false, false];
@@ -591,17 +590,17 @@ impl TryFrom<Option<ServerSessionPublicKey>> for ServerExtensions {
     type Error = Mutter;
 
     fn try_from(val: Option<ServerSessionPublicKey>) -> Result<Self, Mutter> {
-        if val.is_none() {
-            Mutter::BadInput.into()
+        if let Some(v) = val {
+            Ok(Self(v))
         } else {
-            Ok(Self(val.unwrap()))
+            Mutter::BadInput.into()
         }
     }
 }
 
 impl ServerExtensions {
     // 'bytes' holds a list of extensions. The first two bytes encode the size of the list,
-    pub fn deserialize(mut deser: &mut DeSer) -> Result<(ServerExtensions, usize), Mutter> {
+    pub fn deserialize(deser: &mut DeSer) -> Result<(ServerExtensions, usize), Mutter> {
         if !deser.have(size_of::<u16>()) {
             return Err(Mutter::BadInput);
         }
@@ -618,11 +617,11 @@ impl ServerExtensions {
             log::info!("ServerExtensions - {ext_type_code:#?}");
             copied += match ext_type_code {
                 ExtensionTypeCode::SupportedVersions => {
-                    let (_, size) = SupportedVersionExt::deserialize(PeerType::Server, &mut deser)?;
+                    let (_, size) = SupportedVersionExt::deserialize(PeerType::Server, deser)?;
                     size
                 }
                 ExtensionTypeCode::KeyShare => {
-                    let (key_share_ext, size) = ServerSessionPublicKey::deserialize(&mut deser)?;
+                    let (key_share_ext, size) = ServerSessionPublicKey::deserialize(deser)?;
                     key_share = Some(key_share_ext);
                     size
                 }

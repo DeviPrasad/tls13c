@@ -86,7 +86,7 @@ impl Tls13Record {
 
 impl RecordFetcher for Tls13Record {
     fn fetch(deser: &DeSer) -> Result<(bool, usize), ()> {
-        return match Tls13Record::peek(&deser) {
+        match Tls13Record::peek(deser) {
             Ok(rec) => {
                 if deser.have(Tls13Record::SIZE + rec.len as usize) {
                     Ok((true, Tls13Record::SIZE + rec.len as usize))
@@ -101,7 +101,7 @@ impl RecordFetcher for Tls13Record {
                 Ok((false, Tls13Record::SIZE - deser.available()))
             }
             _ => Err(()),
-        };
+        }
     }
 }
 

@@ -46,11 +46,11 @@ pub struct ServerHelloMsg {
 
 #[allow(dead_code)]
 impl ServerHelloMsg {
-    pub fn deserialize(mut deser: &mut DeSer) -> Result<(ServerHelloMsg, usize), Mutter> {
+    pub fn deserialize(deser: &mut DeSer) -> Result<(ServerHelloMsg, usize), Mutter> {
         if !deser.have(Tls13Record::SIZE + size_of::<u32>()) {
             return Mutter::DeserializationBufferInsufficient.into();
         }
-        let rec = Tls13Record::read_handshake(&mut deser)?;
+        let rec = Tls13Record::read_handshake(deser)?;
         let sh_msg_start_cursor = deser.cursor();
         assert_eq!(deser.cursor(), 5);
         if HandshakeType::from(deser.ru8()) != HandshakeType::ServerHello {
@@ -68,7 +68,7 @@ impl ServerHelloMsg {
         }
         let read_server_random =
             |deser: &mut DeSer| deser.slice(32).try_into().map_err(|_| Mutter::RandomVal);
-        let random: Random = read_server_random(&mut deser)?;
+        let random: Random = read_server_random(deser)?;
         let legacy_session_id: Vec<u8> = deser.vlu8_vec();
         let cipher_suite = CipherSuiteId::try_from(deser.ru16())?;
         let _compression_methods_ = deser.zlu8()?;
@@ -101,12 +101,11 @@ impl ServerHelloMsg {
     ) -> Result<ServerSessionPublicKey, Mutter> {
         let serv_key_share: ServerSessionPublicKey = self.extensions.0.clone();
         for client_key_share in cl_key_shares {
-            if client_key_share.group == serv_key_share.group {
-                if client_key_share.group == SupportedGroup::X25519 {
-                    return Ok(serv_key_share);
-                } else if client_key_share.group == SupportedGroup::Secp256r1 {
-                    return Ok(serv_key_share);
-                }
+            if client_key_share.group == serv_key_share.group
+                && (client_key_share.group == SupportedGroup::X25519
+                    || client_key_share.group == SupportedGroup::Secp256r1)
+            {
+                return Ok(serv_key_share);
             }
         }
         Mutter::ServerKeyShareBad.into()

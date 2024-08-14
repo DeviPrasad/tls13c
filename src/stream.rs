@@ -47,10 +47,10 @@ impl TlsStream {
 }
 
 impl Stream for TlsStream {
-    fn read(&mut self, count: usize, mut buf: &mut Vec<u8>) -> Result<usize, Mutter> {
+    fn read(&mut self, count: usize, buf: &mut Vec<u8>) -> Result<usize, Mutter> {
         let buf_len_on_enter = buf.len();
         loop {
-            match self.stream.read_to_end(&mut buf) {
+            match self.stream.read_to_end(buf) {
                 Ok(0) => {
                     let copied = buf.len() - buf_len_on_enter;
                     return Ok(copied);

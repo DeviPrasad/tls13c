@@ -17,8 +17,14 @@ macro_rules! tls13c_crypto_cipher_inplace_decrypt {
             let mut iv_bytes: [u8; 12] = [0; 12];
             assert_eq!(self.iv.len(), 12);
             iv_bytes.copy_from_slice(&self.iv);
-            for (ivb, nrb) in iv_bytes.iter_mut().rev().zip(self.nr.to_le_bytes().iter()) {
-                *ivb ^= *nrb;
+            if cfg!(target_endian = "little") {
+                for (ivb, nrb) in iv_bytes.iter_mut().rev().zip(self.nr.to_ne_bytes().iter()) {
+                    *ivb ^= *nrb;
+                }
+            } else {
+                for (ivb, nrb) in iv_bytes.iter_mut().zip(self.nr.to_ne_bytes().iter()) {
+                    *ivb ^= *nrb;
+                }
             }
             let iv = Nonce::from_slice(&iv_bytes);
             self.nr += 1;
@@ -38,8 +44,15 @@ macro_rules! tls13c_crypto_cipher_inplace_encrypt {
             let mut iv_bytes: [u8; 12] = [0; 12];
             assert_eq!(self.iv.len(), 12);
             iv_bytes.copy_from_slice(&self.iv);
-            for (ivb, nrb) in iv_bytes.iter_mut().rev().zip(self.nr.to_le_bytes().iter()) {
-                *ivb ^= *nrb;
+            // rev() on little-endian arch
+            if cfg!(target_endian = "little") {
+                for (ivb, nrb) in iv_bytes.iter_mut().rev().zip(self.nr.to_ne_bytes().iter()) {
+                    *ivb ^= *nrb;
+                }
+            } else {
+                for (ivb, nrb) in iv_bytes.iter_mut().zip(self.nr.to_ne_bytes().iter()) {
+                    *ivb ^= *nrb;
+                }
             }
             let iv = Nonce::from_slice(&iv_bytes);
             self.nr += 1;
@@ -47,6 +60,20 @@ macro_rules! tls13c_crypto_cipher_inplace_encrypt {
                 .encrypt_in_place(iv, ad, out as &mut dyn aead::Buffer)
                 .map_err(|_| Mutter::DecryptionFailed)
         }
+    };
+}
+
+macro_rules! derived_secrets {
+    ($obj:expr,$master_secret: ident,$serv_secret:ident,$cl_secret:ident) => {
+        (
+            $master_secret,
+            $obj.hkdf_expand_label(&$serv_secret, "key", &[], $obj.key_size() as u16),
+            $obj.hkdf_expand_label(&$serv_secret, "iv", &[], $obj.nonce_len() as u16),
+            $serv_secret,
+            $obj.hkdf_expand_label(&$cl_secret, "key", &[], $obj.key_size() as u16),
+            $obj.hkdf_expand_label(&$cl_secret, "iv", &[], $obj.nonce_len() as u16),
+            $cl_secret,
+        )
     };
 }
 
@@ -158,6 +185,16 @@ impl TlsCipher for TlsChaCha20Ploy1305Cipher {
     tls13c_crypto_cipher_inplace_encrypt!();
 }
 
+type DerivedSecrets = (
+    Vec<u8>,
+    Vec<u8>,
+    Vec<u8>,
+    Vec<u8>,
+    Vec<u8>,
+    Vec<u8>,
+    Vec<u8>,
+);
+
 pub trait TlsCipherSuite {
     // type Aead: AeadCore + AeadInPlace + KeyInit + KeySizeUser;
     fn digest_size(&self) -> usize;
@@ -218,19 +255,7 @@ pub trait TlsCipherSuite {
     // 'server_handshake_traffic_secret', and 'client_handshake_traffic_secret', respectively.
     // The value of 'secret' for Application Data record type is
     // 'server_application_traffic_secret' and 'client_application_traffic_secret', respectively.
-    fn handshake_traffic_secrets(
-        &self,
-        dh: &[u8],
-        hello_msg_ctx: &[u8],
-    ) -> (
-        Vec<u8>,
-        Vec<u8>,
-        Vec<u8>,
-        Vec<u8>,
-        Vec<u8>,
-        Vec<u8>,
-        Vec<u8>,
-    ) {
+    fn handshake_traffic_secrets(&self, dh: &[u8], hello_msg_ctx: &[u8]) -> DerivedSecrets {
         let early_secret = self.hkdf_extract(
             [0].repeat(self.digest_size()).as_slice(),
             [0].repeat(self.digest_size()).as_slice(),
@@ -239,30 +264,14 @@ pub trait TlsCipherSuite {
         let hs_secret_master = self.hkdf_extract(&salt, dh);
         let serv_hs_secret = self.derive_secret(&hs_secret_master, "s hs traffic", hello_msg_ctx);
         let cl_hs_secret = self.derive_secret(&hs_secret_master, "c hs traffic", hello_msg_ctx);
-        (
-            hs_secret_master,
-            self.hkdf_expand_label(&serv_hs_secret, "key", &[], self.key_size() as u16),
-            self.hkdf_expand_label(&serv_hs_secret, "iv", &[], self.nonce_len() as u16),
-            serv_hs_secret,
-            self.hkdf_expand_label(&cl_hs_secret, "key", &[], self.key_size() as u16),
-            self.hkdf_expand_label(&cl_hs_secret, "iv", &[], self.nonce_len() as u16),
-            cl_hs_secret,
-        )
+        derived_secrets!(self, hs_secret_master, serv_hs_secret, cl_hs_secret)
     }
 
     fn derive_app_traffic_secrets(
         &self,
         hs_secret_master: Vec<u8>,
         hello_to_serv_fin_msg_ctx: &[u8],
-    ) -> (
-        Vec<u8>,
-        Vec<u8>,
-        Vec<u8>,
-        Vec<u8>,
-        Vec<u8>,
-        Vec<u8>,
-        Vec<u8>,
-    ) {
+    ) -> DerivedSecrets {
         let salt = self.derive_secret(&hs_secret_master, "derived", &[]);
         let master_secret = self.hkdf_extract(&salt, [0].repeat(self.digest_size()).as_slice());
         let serv_app_traffic_secret =
@@ -270,14 +279,11 @@ pub trait TlsCipherSuite {
         let cl_app_traffic_secret =
             self.derive_secret(&master_secret, "c ap traffic", hello_to_serv_fin_msg_ctx);
 
-        (
+        derived_secrets!(
+            self,
             master_secret,
-            self.hkdf_expand_label(&serv_app_traffic_secret, "key", &[], self.key_size() as u16),
-            self.hkdf_expand_label(&serv_app_traffic_secret, "iv", &[], self.nonce_len() as u16),
             serv_app_traffic_secret,
-            self.hkdf_expand_label(&cl_app_traffic_secret, "key", &[], self.key_size() as u16),
-            self.hkdf_expand_label(&cl_app_traffic_secret, "iv", &[], self.nonce_len() as u16),
-            cl_app_traffic_secret,
+            cl_app_traffic_secret
         )
     }
 
@@ -593,21 +599,21 @@ fn hkdf_sha256_extract(salt: &[u8], ikm: &[u8]) -> Vec<u8> {
 
 fn hmac_sha256(key: &[u8], data: &[u8]) -> Result<Vec<u8>, Mutter> {
     let mut hmac_sha256 =
-        <Hmac<Sha256> as KeyInit>::new_from_slice(&key).map_err(|_| Mutter::HmacBadKeyLen)?;
-    hmac_sha256.update(&data);
+        <Hmac<Sha256> as KeyInit>::new_from_slice(key).map_err(|_| Mutter::HmacBadKeyLen)?;
+    hmac_sha256.update(data);
     Ok(hmac_sha256.finalize().into_bytes().to_vec())
 }
 
 fn hmac_sha384(key: &[u8], data: &[u8]) -> Result<Vec<u8>, Mutter> {
     let mut hmac_sha384 =
-        <Hmac<Sha384> as KeyInit>::new_from_slice(&key).map_err(|_| Mutter::HmacBadKeyLen)?;
-    hmac_sha384.update(&data);
+        <Hmac<Sha384> as KeyInit>::new_from_slice(key).map_err(|_| Mutter::HmacBadKeyLen)?;
+    hmac_sha384.update(data);
     Ok(hmac_sha384.finalize().into_bytes().to_vec())
 }
 
 fn transcript_hash<D: Digest>(ctx: &[u8]) -> Vec<u8> {
     let mut digest = D::new();
-    digest.update(&ctx);
+    digest.update(ctx);
     digest.finalize().to_vec()
 }
 
@@ -619,12 +625,24 @@ mod crypto_tests {
     };
 
     #[test]
+    fn endian_nonce() {
+        let counter = 5u64;
+        assert_eq!(counter.to_be_bytes(), [0, 0, 0, 0, 0, 0, 0, 5]);
+        assert_eq!(counter.to_le_bytes(), [5, 0, 0, 0, 0, 0, 0, 0]);
+        if cfg!(target_endian = "little") {
+            assert_eq!(counter.to_ne_bytes(), [5, 0, 0, 0, 0, 0, 0, 0]);
+        } else {
+            assert_eq!(counter.to_ne_bytes(), [0, 0, 0, 0, 0, 0, 0, 5]);
+        }
+    }
+
+    #[test]
     fn tls_aes128gcm_sha256() {
         let res_aead = TlsAes128GcmSha256Cipher::try_from((vec![2; 16], vec![1; 12]));
-        assert!(matches!(res_aead, Ok(_)));
+        assert!(res_aead.is_ok());
         let aead: &mut dyn TlsCipher = &mut res_aead.unwrap();
         assert!(aead
-            .decrypt_next(&[3].repeat(12), &mut Vec::from([0].repeat(32)))
+            .decrypt_next(&[3].repeat(12), &mut [0].repeat(32))
             .is_err());
     }
 
@@ -632,7 +650,7 @@ mod crypto_tests {
     fn tls_aes256gcm_sha384() {
         let _aes256_gcm_sha384: &dyn TlsCipherSuite = &TlsAes256GcmSha384CipherSuite::default();
         let res_aead = TlsAes256GcmSha384Cipher::try_from((vec![2; 32], vec![1; 12]));
-        assert!(matches!(res_aead, Ok(_)));
+        assert!(res_aead.is_ok());
         let aead = res_aead.unwrap();
         assert_eq!(aead.iv.len(), 12);
     }
@@ -640,6 +658,6 @@ mod crypto_tests {
     #[test]
     fn tls_chacha20poly1305_sha256() {
         let res_aead = TlsChaCha20Ploy1305Cipher::try_from((vec![2; 32], vec![1; 12]));
-        assert!(matches!(res_aead, Ok(_)));
+        assert!(res_aead.is_ok());
     }
 }
