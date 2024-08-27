@@ -10,6 +10,7 @@ pub enum Mutter {
     MsgLen = 10,
     RandomVal = 14,
     SessionIdLen = 19,
+    UnexpectedSessionIdInServerHello = 20,
     CipherSuiteLen = 23,
     UnsupportedCipherSuite = 24,
     CipherUnsupported = 28,

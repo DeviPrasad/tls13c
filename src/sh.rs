@@ -1,5 +1,3 @@
-use std::mem::size_of;
-
 use crate::def::{
     CipherSuiteId, HandshakeType, LegacyRecordVersion, LegacyTlsVersion, Random, RecordContentType,
     SupportedGroup,
@@ -47,7 +45,7 @@ pub struct ServerHelloMsg {
 #[allow(dead_code)]
 impl ServerHelloMsg {
     pub fn deserialize(deser: &mut DeSer) -> Result<(ServerHelloMsg, usize), Mutter> {
-        if !deser.have(Tls13Record::SIZE + size_of::<u32>()) {
+        if !deser.have(Tls13Record::SIZE + 4) {
             return Mutter::DeserializationBufferInsufficient.into();
         }
         let rec = Tls13Record::read_handshake(deser)?;
@@ -70,6 +68,9 @@ impl ServerHelloMsg {
             |deser: &mut DeSer| deser.slice(32).try_into().map_err(|_| Mutter::RandomVal);
         let random: Random = read_server_random(deser)?;
         let legacy_session_id: Vec<u8> = deser.vlu8_vec();
+        if !legacy_session_id.is_empty() {
+            return Mutter::UnexpectedSessionIdInServerHello.into();
+        }
         let cipher_suite = CipherSuiteId::try_from(deser.ru16())?;
         let _compression_methods_ = deser.zlu8()?;
 

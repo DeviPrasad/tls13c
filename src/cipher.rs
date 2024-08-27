@@ -618,7 +618,7 @@ fn transcript_hash<D: Digest>(ctx: &[u8]) -> Vec<u8> {
 }
 
 #[cfg(test)]
-mod crypto_tests {
+mod cipher_tests {
     use crate::cipher::{
         TlsAes128GcmSha256Cipher, TlsAes256GcmSha384Cipher, TlsAes256GcmSha384CipherSuite,
         TlsChaCha20Ploy1305Cipher, TlsCipher, TlsCipherSuite,
