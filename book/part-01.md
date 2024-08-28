@@ -6,7 +6,7 @@ A *cipher* defines a pair of functions, *encryption* and *decryption*, where one
 
 A *key* is a secret shared between honest parties (or peers) that have agreed to use a specific cipher to  exchange data. A cipher is expected to give higher guarantees about confidentiality of data - the assurance that it is computationally infeasible for an adversary who doesn't have access to the secret key to obtain plaintext from a (possibly leaked) ciphertext.
 
-Two popular examples of ciphers are [AES](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197-upd1.pdf) and [ChaCha20](https://cr.yp.to/chacha/chacha-20080128.pdf).
+Two popular examples of ciphers are [AES](#xref-fips-197-aes) and [ChaCha20](#xref-ietf-cc20p1305).
 
 Cryptography protocols assume that a key is uniformly drawn from a large set. One may imagine, for instance, that all 128 bits of an AES128 key to be drawn from some source of randomness. In real-world protocols, however, AES128 key is *derived* interactively using a combination of other primitives, *schemes*, and functions called *Key Derivation Functions* (KDFs).
 
@@ -228,6 +228,9 @@ FIPS 197 is the official publication of Advanced Encryption Standard (AES). It d
 
 <a id="xref-fips-197-aes"></a>
 FIPS 197, Advanced Encryption Standard (AES) https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197-upd1.pdf.
+
+<a id="xref-ietf-cc20p1305"></a>
+ChaCha20 and Poly1305 for IETF Protocols. https://datatracker.ietf.org/doc/html/rfc8439#section-2.3.
 
 
 <a id="xref-nist-800-38A-block-cipher-modes"></a>
