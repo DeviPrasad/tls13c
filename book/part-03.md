@@ -97,12 +97,12 @@ This message immediately follows ServerHello, and it indicates server's preferen
 
 ### ClientHello
 
-![client_hello_layout](./images/client_hello_layout.png)
+![client_hello_layout](./images/client_hello_layout.jpg)
 
 
 ### ServerHello
 
-![server_hello_layout](./images/server_hello_layout.png)
+![server_hello_layout](./images/server_hello_layout.jpg)
 
 
 ### Authentication
