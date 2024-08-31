@@ -2,7 +2,9 @@ use crate::ccs::ChangeCipherSpecMsg;
 use crate::cert::{CertificateMsg, CertificateVerifyMsg};
 use crate::ch::ClientHelloMsg;
 use crate::cipher::{AppTrafficSecrets, HandshakeSecrets, TlsCipherSuite};
-use crate::def::{CipherSuiteId, HandshakeType, RecordContentType, SupportedGroup};
+use crate::def::{
+    CipherSuiteId, HandshakeType, RecordContentType, SignatureScheme, SupportedGroup,
+};
 use crate::deser::DeSer;
 use crate::ecdhe::DHSession;
 use crate::enc_ext::EncryptedExtensionsMsg;
@@ -12,6 +14,7 @@ use crate::fin::FinishedMsg;
 use crate::rec::{try_fetch, Tls13Ciphertext, Tls13InnerPlaintext, Tls13Record};
 use crate::sh::ServerHelloMsg;
 use crate::stream::{Stream, TlsStream};
+use x509_cert::Certificate;
 
 pub struct KeyExchangeSession {
     serv_stream: TlsStream,
@@ -98,6 +101,7 @@ impl KeyExchangeSession {
         cipher_suite_id: CipherSuiteId,
         serv_key: ServerSessionPublicKey,
         dh: DHSession,
+        sig_algs: Vec<SignatureScheme>,
     ) -> Result<AuthenticationSession, Mutter> {
         let dh_shared_secret: Vec<u8> = if serv_key.group == SupportedGroup::X25519 {
             dh.x25519_dh(serv_key.public_key)
@@ -132,6 +136,8 @@ impl KeyExchangeSession {
             hs_msg_buf: self.msg_buf[self.cursor..].into(),
             ciphertext_rec_end: 0,
             secrets,
+            sig_algs,
+            cert: None,
         })
     }
 }
@@ -159,6 +165,8 @@ pub struct AuthenticationSession {
     hs_msg_buf: Vec<u8>,
     ciphertext_rec_end: usize,
     secrets: HandshakeSecrets,
+    sig_algs: Vec<SignatureScheme>,
+    cert: Option<Certificate>,
 }
 
 impl AuthProc for EncryptedExtensionsMsg {
@@ -182,13 +190,71 @@ impl AuthProc for EncryptedExtensionsMsg {
     }
 }
 
+impl AuthProc for CertificateMsg {
+    fn authenticate(
+        deser: &mut DeSer,
+        session: &mut AuthenticationSession,
+    ) -> Result<(AuthMsgType, Vec<u8>), Mutter> {
+        CertificateMsg::deserialize(deser)
+            .map(|(cert_msg, msg_slice)| {
+                if deser.peek_u8() == RecordContentType::Handshake as u8 {
+                    deser.ru8();
+                    log::info!("Certificate - ContentType = HANDSHAKE");
+                }
+                (cert_msg, msg_slice)
+            })
+            .map(|(cert_msg, msg_slice)| {
+                log::info!("Certificate ({} bytes)", msg_slice.len());
+                session.update_msg_ctx(&msg_slice);
+                session.cert = cert_msg.certificate();
+                (AuthMsgType::Cert(cert_msg), msg_slice)
+            })
+    }
+}
+
+impl AuthProc for CertificateVerifyMsg {
+    fn authenticate(
+        deser: &mut DeSer,
+        session: &mut AuthenticationSession,
+    ) -> Result<(AuthMsgType, Vec<u8>), Mutter> {
+        CertificateVerifyMsg::deserialize(deser)
+            .map(|(cert_verify_msg, msg_slice)| {
+                if deser.peek_u8() == RecordContentType::Handshake as u8 {
+                    deser.ru8();
+                    log::info!("CertificateVerify - ContentType = HANDSHAKE");
+                }
+                (cert_verify_msg, msg_slice)
+            })
+            .and_then(|(cert_verify_msg, msg_slice)| {
+                if cert_verify_msg.supported_sig_scheme(&session.sig_algs) {
+                    let cert = session
+                        .cert
+                        .clone()
+                        .ok_or(Mutter::UnsupportedSignatureScheme)?;
+                    let transcript_hash = session.server_certificate_verify_hash()?;
+                    cert_verify_msg.verify(transcript_hash, cert)?;
+                    Ok((cert_verify_msg, msg_slice))
+                } else {
+                    Mutter::UnsupportedSignatureSchemeInCertificateVerify.into()
+                }
+            })
+            .map(|(cert_verify_msg, msg_slice)| {
+                session.update_msg_ctx(&msg_slice);
+                (AuthMsgType::CertVerify(cert_verify_msg), msg_slice)
+            })
+    }
+}
+
 impl AuthProc for FinishedMsg {
     fn authenticate(
         deser: &mut DeSer,
         session: &mut AuthenticationSession,
     ) -> Result<(AuthMsgType, Vec<u8>), Mutter> {
         FinishedMsg::deserialize(deser).and_then(|(serv_fin_msg, msg_slice)| {
-            // verify the MAC in the Server Finished message
+            // RFC 8446m, Page 62.
+            // verify the MAC in the Server Finished message. The MAC is over the value
+            // Transcript-Hash(Handshake Context, Certificate, CertificateVerify)
+            // using a MAC key derived from the Base Key (server_handshake_traffic_ secret)
             session
                 .server_finished_mac()
                 .and_then(|expected_tag| match serv_fin_msg.check_mac(expected_tag) {
@@ -218,48 +284,6 @@ impl AuthProc for FinishedMsg {
                     (AuthMsgType::Fin(fin_msg), msg_slice)
                 })
         })
-    }
-}
-
-impl AuthProc for CertificateMsg {
-    fn authenticate(
-        deser: &mut DeSer,
-        session: &mut AuthenticationSession,
-    ) -> Result<(AuthMsgType, Vec<u8>), Mutter> {
-        CertificateMsg::deserialize(deser)
-            .map(|(cert_msg, msg_slice)| {
-                if deser.peek_u8() == RecordContentType::Handshake as u8 {
-                    deser.ru8();
-                    log::info!("Certificate - ContentType = HANDSHAKE");
-                }
-                (cert_msg, msg_slice)
-            })
-            .map(|(cert_msg, msg_slice)| {
-                log::info!("Certificate ({} bytes)", msg_slice.len());
-                session.update_msg_ctx(&msg_slice);
-                (AuthMsgType::Cert(cert_msg), msg_slice)
-            })
-    }
-}
-
-impl AuthProc for CertificateVerifyMsg {
-    fn authenticate(
-        deser: &mut DeSer,
-        session: &mut AuthenticationSession,
-    ) -> Result<(AuthMsgType, Vec<u8>), Mutter> {
-        CertificateVerifyMsg::deserialize(deser)
-            .map(|(cert_verify_msg, msg_slice)| {
-                if deser.peek_u8() == RecordContentType::Handshake as u8 {
-                    deser.ru8();
-                    log::info!("CertificateVerify - ContentType = HANDSHAKE");
-                }
-                (cert_verify_msg, msg_slice)
-            })
-            .map(|(cert_verify_msg, msg_slice)| {
-                log::info!("CertificateVerify");
-                session.update_msg_ctx(&msg_slice);
-                (AuthMsgType::CertVerify(cert_verify_msg), msg_slice)
-            })
     }
 }
 
@@ -444,6 +468,10 @@ impl AuthenticationSession {
 
     fn server_finished_mac(&self) -> Result<Vec<u8>, Mutter> {
         self.secrets.server_finished_mac(&self.msg_ctx)
+    }
+
+    fn server_certificate_verify_hash(&self) -> Result<Vec<u8>, Mutter> {
+        self.secrets.server_certificate_verify_hash(&self.msg_ctx)
     }
 
     fn client_finished_mac(&self) -> Result<Vec<u8>, Mutter> {

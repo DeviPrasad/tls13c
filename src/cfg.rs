@@ -70,7 +70,7 @@ impl PeerSessionConfig {
             "www.microsoft.com:443",
             "/en-in/",
             &[SupportedGroup::Secp256r1, SupportedGroup::X25519],
-            &[SignatureScheme::Ed25519, SignatureScheme::RsaPssRsaeSha256],
+            &[SignatureScheme::RsaPssRsaeSha256],
             &[CipherSuiteId::TlsAes128GcmSha256],
         )
     }
@@ -96,7 +96,7 @@ impl PeerSessionConfig {
             "www.google.com:443",
             "",
             &[SupportedGroup::X25519],
-            &[SignatureScheme::Ed25519, SignatureScheme::RsaPssRsaeSha256],
+            &[SignatureScheme::RsaPssRsaeSha256],
             &[CipherSuiteId::TlsChacha20Poly1305Sha256],
         )
     }
@@ -108,7 +108,7 @@ impl PeerSessionConfig {
             "www.apple.com:443",
             "",
             &[SupportedGroup::X25519],
-            &[SignatureScheme::Ed25519, SignatureScheme::RsaPssRsaeSha256],
+            &[SignatureScheme::RsaPssRsaeSha256],
             &[CipherSuiteId::TlsChacha20Poly1305Sha256],
         )
     }
@@ -120,7 +120,7 @@ impl PeerSessionConfig {
             "about",
             &[SupportedGroup::X25519],
             &[SignatureScheme::Ed25519, SignatureScheme::RsaPssRsaeSha256],
-            &[CipherSuiteId::TlsAes128GcmSha256],
+            &[CipherSuiteId::TlsChacha20Poly1305Sha256],
         )
     }
 
@@ -131,10 +131,7 @@ impl PeerSessionConfig {
             "github.com:443",
             "/trending",
             &[SupportedGroup::X25519],
-            &[
-                SignatureScheme::Ed25519,
-                SignatureScheme::EcdsaSecp256r1Sha256,
-            ],
+            &[SignatureScheme::EcdsaSecp256r1Sha256],
             &[CipherSuiteId::TlsAes128GcmSha256],
         )
     }

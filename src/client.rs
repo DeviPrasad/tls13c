@@ -10,7 +10,7 @@ use crate::{logger, rand};
 pub fn client_main() -> Result<(), Mutter> {
     logger::init_logger(true);
 
-    Ok(&PeerSessionConfig::spacex())
+    Ok(&PeerSessionConfig::microsoft())
         .and_then(|peer| Ok((peer, TlsConnection::with_peer(peer)?)))
         .and_then(|(peer, tls_conn)| Ok((peer, exchange(peer, tls_conn)?)))
         .and_then(|(peer, auth_session)| Ok((peer, authenticate(auth_session)?)))
@@ -56,7 +56,12 @@ pub fn exchange(
 
     let serv_key_share = sh.key_share(ch.key_shares()).expect("public key for DH");
 
-    key_exchange_session.authentication_session(sh.cipher_suite_id, serv_key_share, dh)
+    key_exchange_session.authentication_session(
+        sh.cipher_suite_id,
+        serv_key_share,
+        dh,
+        peer.sig_algs.clone(),
+    )
 }
 
 pub fn authenticate(mut auth_session: AuthenticationSession) -> Result<AppSession, Mutter> {
@@ -86,7 +91,7 @@ fn run_http_client(path: &str, host: &str, session: &mut AppSession) -> Result<(
     http_get(path, host, session)?;
     let mut resp = vec![0; 4096];
     let mut i = 0;
-    while i < 4 {
+    while i < 1 {
         if let Ok(n) = read_http_response(session, &mut resp) {
             if n > 0 {
                 eprint!("{:#}", String::from_utf8_lossy(resp.as_slice()));

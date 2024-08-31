@@ -297,6 +297,10 @@ pub trait TlsCipherSuite {
         self.hmac(&finished_key, &self.transcript_hash(hs_ctx))
     }
 
+    fn derive_certificate_verify_hash(&self, hs_ctx: &[u8]) -> Result<Vec<u8>, Mutter> {
+        Ok(self.transcript_hash(hs_ctx))
+    }
+
     fn cipher(&self, key: Vec<u8>, nonce: Vec<u8>) -> Box<dyn TlsCipher>;
 }
 
@@ -541,6 +545,10 @@ impl HandshakeSecrets {
     pub fn server_finished_mac(&self, hs_ctx: &[u8]) -> Result<Vec<u8>, Mutter> {
         self.cipher_suite
             .derive_finished_mac(&self.serv_hs_traffic_secret, hs_ctx)
+    }
+
+    pub fn server_certificate_verify_hash(&self, hs_ctx: &[u8]) -> Result<Vec<u8>, Mutter> {
+        self.cipher_suite.derive_certificate_verify_hash(hs_ctx)
     }
 
     pub fn client_finished_mac(&self, hs_ctx: &[u8]) -> Result<Vec<u8>, Mutter> {
