@@ -91,13 +91,8 @@ impl CertificateMsg {
             {
                 return Mutter::ExpiredCertificate.into();
             }
-            cert_list.push(cert.clone());
-            let cert_ext = cert
-                .tbs_certificate
-                .extensions
-                .ok_or(Mutter::PostDatedCertificate.into())?;
-            log::info!("Certificate Extensions: {cert_ext:#?}");
             // store it for later use in VerifySignature
+            cert_list.push(cert);
         }
         assert_eq!(cert_deser.cursor(), cert_list_len + 4);
 
@@ -195,6 +190,7 @@ impl CertificateVerifyMsg {
                     RsaPublicKey::try_from(spki).map_err(|_| Mutter::BadSubjectPublicKeyInfo)?;
                 let vk = rsa::pss::VerifyingKey::<Sha256>::new(rsa_pub_key);
                 vk.verify(&Self::server_signed_content(&transcript_hash), &sig)
+                    .map_err(|_| Mutter::CertificateSignatureVerificationFailed)
             }
             SignatureScheme::EcdsaSecp256r1Sha256 => {
                 let sig = p256::ecdsa::DerSignature::try_from(self.signature.as_slice())
@@ -203,14 +199,15 @@ impl CertificateVerifyMsg {
                 let vk = p256::ecdsa::VerifyingKey::try_from(spki)
                     .map_err(|_| Mutter::BadSubjectPublicKeyInfo)?;
                 vk.verify(&Self::server_signed_content(&transcript_hash), &sig)
+                    .map_err(|_| Mutter::CertificateSignatureVerificationFailed)
             }
             _ => {
-                panic!(
+                log::error!(
                     "Unsupported Signature Verification Scheme: {:#?}",
                     self.sig_scheme
                 );
+                Mutter::UnsupportedSignatureSchemeInCertificateVerify.into()
             }
         }
-        .map_err(|_| Mutter::CertificateSignatureVerificationFailed)
     }
 }

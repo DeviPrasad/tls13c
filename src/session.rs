@@ -531,7 +531,7 @@ impl AppSession {
         self.buf.len() - self.pos
     }
 
-    fn read_ciphertext_record(&mut self, data: &mut Vec<u8>) -> Result<usize, Mutter> {
+    pub(crate) fn read_ciphertext_record(&mut self, data: &mut Vec<u8>) -> Result<usize, Mutter> {
         if self.buf_available() < Tls13Ciphertext::SIZE {
             let need = Tls13Ciphertext::SIZE - self.buf_available();
             if !try_fetch::<Tls13Ciphertext>(&mut self.serv_stream, &mut self.buf, need) {

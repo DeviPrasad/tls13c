@@ -81,6 +81,7 @@ pub enum Mutter {
     SocketPropertyError = 172,
     StreamTimeout = 173,
     ServerSocketConnectFailed = 174,
+    ProbablyEmptyStream = 175,
 
     TooBig = 221,
     MsgSizeInvalid = 222,

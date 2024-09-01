@@ -25,15 +25,16 @@ impl TlsStream {
             .map_err(|_| Mutter::BadNetworkAddress)?;
         for serv_sock_addr in server_sock_addresses {
             match TcpStream::connect(serv_sock_addr) {
-                Ok(sock) => match sock.set_read_timeout(Some(Duration::from_millis(5))) {
-                    Ok(_) => return Ok(Self { stream: sock }),
-                    Err(e) => log::error!("error: {e:#?}"),
-                },
+                Ok(sock) => {
+                    let _ = sock.set_read_timeout(Some(Duration::from_millis(60)));
+                    return Ok(Self { stream: sock });
+                }
                 Err(e) => {
                     log::error!("error: {e:#?}");
                 }
             }
         }
+        log::info!("TlsStream created!");
         Err(Mutter::TlsConnection)
     }
 
@@ -49,6 +50,7 @@ impl TlsStream {
 impl Stream for TlsStream {
     fn read(&mut self, count: usize, buf: &mut Vec<u8>) -> Result<usize, Mutter> {
         let buf_len_on_enter = buf.len();
+        let mut blocked = 0;
         loop {
             match self.stream.read_to_end(buf) {
                 Ok(0) => {
@@ -67,15 +69,20 @@ impl Stream for TlsStream {
                     if copied > count {
                         return Ok(copied);
                     }
+                    blocked += 1;
+                    // log::warn!("block retry count: {blocked}");
+                    if blocked > 50 {
+                        return Mutter::ProbablyEmptyStream.into();
+                    }
                     continue;
                 }
                 Err(_e) => {
-                    // log::error!("error: {e:#?}");
                     return Mutter::StreamError.into();
                 }
             }
         }
     }
+
     fn write(&mut self, buf: &[u8]) -> Result<usize, Mutter> {
         self.stream.write(buf).map_err(|_| Mutter::StreamWriteError)
     }

@@ -5,17 +5,17 @@ use crate::err::Mutter;
 use crate::ext::ClientExtensions;
 use crate::session::{AppSession, AuthenticationSession, KeyExchangeSession, MessageAuthenticator};
 use crate::stream::TlsConnection;
-use crate::{logger, rand};
+use crate::{deser, logger, rand};
 
 pub fn client_main() -> Result<(), Mutter> {
     logger::init_logger(true);
 
-    Ok(&PeerSessionConfig::microsoft())
+    Ok(&PeerSessionConfig::india())
         .and_then(|peer| Ok((peer, TlsConnection::with_peer(peer)?)))
         .and_then(|(peer, tls_conn)| Ok((peer, exchange(peer, tls_conn)?)))
         .and_then(|(peer, auth_session)| Ok((peer, authenticate(auth_session)?)))
         .and_then(|(peer, mut app_session)| {
-            run_http_client(&peer.path, &peer.id, &mut app_session)?;
+            run_client(&peer.path, &peer.id, &mut app_session)?;
             tls_shutdown(&mut app_session);
             Ok(())
         })
@@ -83,30 +83,59 @@ fn http_get(path: &str, host: &str, session: &mut AppSession) -> Result<usize, M
     session.send(http_req_plaintext.as_bytes())
 }
 
-fn read_http_response(session: &mut AppSession, response: &mut Vec<u8>) -> Result<usize, Mutter> {
+fn read_server_resp(session: &mut AppSession, response: &mut Vec<u8>) -> Result<usize, Mutter> {
     session.read(response)
 }
 
-fn run_http_client(path: &str, host: &str, session: &mut AppSession) -> Result<(), Mutter> {
+fn run_client(path: &str, host: &str, session: &mut AppSession) -> Result<(), Mutter> {
     http_get(path, host, session)?;
-    let mut resp = vec![0; 4096];
-    let mut i = 0;
-    while i < 1 {
-        if let Ok(n) = read_http_response(session, &mut resp) {
-            if n > 0 {
-                eprint!("{:#}", String::from_utf8_lossy(resp.as_slice()));
-                i += 1;
-            } else {
+
+    let mut resp = vec![];
+
+    // Session tickets are optional. Not all servers offer them. For example, x.com doesn't.
+    // We do not use them in any way.
+    let mut ticket_last = 0;
+    {
+        let mut _dbg_tc = 0; // ticket counts
+        while !(resp.ends_with(&[1, 0, 21]) || resp.ends_with(&[2, 0, 21]))
+            && session.read_ciphertext_record(&mut resp).is_ok()
+        {
+            let mut deser = deser::DeSer::new(&resp[ticket_last..]);
+            while deser.have(5) && deser.peek_u8() == 4 {
+                let len = deser.peek_u24_at(1) as usize;
+                if deser.peek_u8_at(len + 4) == 22 {
+                    log::info!("Got a session ticket {:?}", deser.slice(len + 5));
+                    ticket_last += len + 5;
+                    _dbg_tc += 1;
+                }
+            }
+            // Some servers (ex: 'www.mitre.org') send out a close_notify(0) alert.
+            // alert level 1 is Warning and 2 is Fatal
+            if resp.ends_with(&[1, 0, 21]) || resp.ends_with(&[2, 0, 21]) {
                 break;
             }
-        } else {
-            break;
+        }
+
+        if _dbg_tc > 0 {
+            eprintln!("\n");
+            log::info!("Found {_dbg_tc} session Ticket(s).");
         }
     }
+
+    // if the last message wasn't an alert message, read more till an alert
+    // or the stream is empty (at least appears so).
+    while !(resp.ends_with(&[1, 0, 21]) || resp.ends_with(&[2, 0, 21]))
+        && read_server_resp(session, &mut resp).is_ok()
+    {}
+
+    eprintln!("\n");
+    eprint!("{:#}", String::from_utf8_lossy(&resp[ticket_last..]));
+    eprintln!("\n");
     Ok(())
 }
 
 fn tls_shutdown(session: &mut AppSession) {
+    eprintln!("\n\n");
     log::info!("Done! Shutting down the connection....");
     let _ = session.shutdown();
 }

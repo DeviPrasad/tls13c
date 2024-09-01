@@ -12,7 +12,6 @@ mod err;
 mod ext;
 mod fin;
 mod logger;
-mod protocol;
 mod rand;
 mod rec;
 mod session;
