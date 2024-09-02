@@ -1,3 +1,4 @@
+use aead::Buffer;
 use crate::cfg::PeerSessionConfig;
 use crate::ch::ClientHelloMsg;
 use crate::ecdhe::DHSession;
@@ -10,7 +11,7 @@ use crate::{deser, logger, rand};
 pub fn client_main() -> Result<(), Mutter> {
     logger::init_logger(true);
 
-    Ok(&PeerSessionConfig::india())
+    Ok(&PeerSessionConfig::mitre())
         .and_then(|peer| Ok((peer, TlsConnection::with_peer(peer)?)))
         .and_then(|(peer, tls_conn)| Ok((peer, exchange(peer, tls_conn)?)))
         .and_then(|(peer, auth_session)| Ok((peer, authenticate(auth_session)?)))
@@ -88,15 +89,13 @@ fn read_server_resp(session: &mut AppSession, response: &mut Vec<u8>) -> Result<
 }
 
 fn run_client(path: &str, host: &str, session: &mut AppSession) -> Result<(), Mutter> {
-    http_get(path, host, session)?;
-
     let mut resp = vec![];
 
     // Session tickets are optional. Not all servers offer them. For example, x.com doesn't.
     // We do not use them in any way.
     let mut ticket_last = 0;
     {
-        let mut _dbg_tc = 0; // ticket counts
+        let mut tc = 0; // ticket counts
         while !(resp.ends_with(&[1, 0, 21]) || resp.ends_with(&[2, 0, 21]))
             && session.read_ciphertext_record(&mut resp).is_ok()
         {
@@ -106,21 +105,32 @@ fn run_client(path: &str, host: &str, session: &mut AppSession) -> Result<(), Mu
                 if deser.peek_u8_at(len + 4) == 22 {
                     log::info!("Got a session ticket {:?}", deser.slice(len + 5));
                     ticket_last += len + 5;
-                    _dbg_tc += 1;
+                    tc += 1;
+                } else {
+                    break;
                 }
             }
             // Some servers (ex: 'www.mitre.org') send out a close_notify(0) alert.
             // alert level 1 is Warning and 2 is Fatal
-            if resp.ends_with(&[1, 0, 21]) || resp.ends_with(&[2, 0, 21]) {
+            if resp.ends_with(&[1, 0, 21]) || resp.ends_with(&[2, 0, 21]) || tc == 0 {
                 break;
             }
+
+            log::info!("next record?");
         }
 
-        if _dbg_tc > 0 {
+        // remove tickets from the buffer retaining alerts and rest of the response.
+        if tc > 0 {
+            let len = resp.len() - ticket_last;
+            resp.copy_within(ticket_last.., 0);
+            resp.truncate(len);
             eprintln!("\n");
-            log::info!("Found {_dbg_tc} session Ticket(s).");
+            log::info!("Found {tc} session Ticket(s).");
         }
     }
+
+    // HTTP GET
+    http_get(path, host, session)?;
 
     // if the last message wasn't an alert message, read more till an alert
     // or the stream is empty (at least appears so).
@@ -129,7 +139,7 @@ fn run_client(path: &str, host: &str, session: &mut AppSession) -> Result<(), Mu
     {}
 
     eprintln!("\n");
-    eprint!("{:#}", String::from_utf8_lossy(&resp[ticket_last..]));
+    eprint!("{:#}", String::from_utf8_lossy(&resp[0..]));
     eprintln!("\n");
     Ok(())
 }

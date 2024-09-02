@@ -2,7 +2,7 @@ use crate::def::{HandshakeType, SignatureScheme};
 use crate::deser::DeSer;
 use crate::err::Mutter;
 use rsa::pkcs1::der::referenced::OwnedToRef;
-use rsa::signature::{SignatureEncoding, Verifier};
+use rsa::signature::Verifier;
 use rsa::RsaPublicKey;
 use sha2::Sha256;
 use std::time;
@@ -184,13 +184,12 @@ impl CertificateVerifyMsg {
                     .as_slice()
                     .try_into()
                     .map_err(|_| Mutter::BadRsaPssRsaeSha256Signature)?;
-                assert_eq!(sig.encoded_len(), 256);
                 // watch the two steps in obtaining the signature verification key
                 let rsa_pub_key =
                     RsaPublicKey::try_from(spki).map_err(|_| Mutter::BadSubjectPublicKeyInfo)?;
                 let vk = rsa::pss::VerifyingKey::<Sha256>::new(rsa_pub_key);
                 vk.verify(&Self::server_signed_content(&transcript_hash), &sig)
-                    .map_err(|_| Mutter::CertificateSignatureVerificationFailed)
+                  .map_err(|_| Mutter::CertificateSignatureVerificationFailed)
             }
             SignatureScheme::EcdsaSecp256r1Sha256 => {
                 let sig = p256::ecdsa::DerSignature::try_from(self.signature.as_slice())
@@ -199,7 +198,7 @@ impl CertificateVerifyMsg {
                 let vk = p256::ecdsa::VerifyingKey::try_from(spki)
                     .map_err(|_| Mutter::BadSubjectPublicKeyInfo)?;
                 vk.verify(&Self::server_signed_content(&transcript_hash), &sig)
-                    .map_err(|_| Mutter::CertificateSignatureVerificationFailed)
+                  .map_err(|_| Mutter::CertificateSignatureVerificationFailed)
             }
             _ => {
                 log::error!(

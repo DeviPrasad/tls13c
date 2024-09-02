@@ -19,6 +19,7 @@ pub struct TlsStream {
 }
 
 impl TlsStream {
+    const MAX_BLOCKED_RETRY: u32 = 26;
     pub fn new(server: &str) -> Result<TlsStream, Mutter> {
         let server_sock_addresses = server
             .to_socket_addrs()
@@ -66,12 +67,12 @@ impl Stream for TlsStream {
                 }
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                     let copied = buf.len() - buf_len_on_enter;
-                    if copied > count {
+                    if blocked > Self::MAX_BLOCKED_RETRY/2 && copied > 0 {
                         return Ok(copied);
                     }
                     blocked += 1;
                     // log::warn!("block retry count: {blocked}");
-                    if blocked > 50 {
+                    if blocked > Self::MAX_BLOCKED_RETRY {
                         return Mutter::ProbablyEmptyStream.into();
                     }
                     continue;
