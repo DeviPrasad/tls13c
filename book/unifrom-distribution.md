@@ -1,9 +1,9 @@
 ## Uniform Distribution
-
+In a uniform distribution, every outcome in a given range has an equal probability of occurring. 
 
 ## Non-uniform Distribution
 
-The opposite of a uniform distribution is a non-uniform distribution. In a uniform distribution, every outcome in a given range has an equal probability of occurring. In contrast, a non-uniform distribution has probabilities that vary across different outcomes.
+The opposite of a uniform distribution is a non-uniform distribution. In contrast, a non-uniform distribution has probabilities that vary across different outcomes.
 
 Common types of non-uniform distributions include:
 
