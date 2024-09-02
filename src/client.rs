@@ -1,4 +1,3 @@
-use aead::Buffer;
 use crate::cfg::PeerSessionConfig;
 use crate::ch::ClientHelloMsg;
 use crate::ecdhe::DHSession;
