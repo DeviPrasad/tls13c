@@ -284,7 +284,7 @@ impl PeerSessionConfig {
     pub fn dicp() -> Self {
         PeerSessionConfig::good(
             "dicp.edu",
-            "dicp.edu:443",
+            "dicp.edu:44444",
             "dicp.html",
             &[SupportedGroup::X25519],
             &[

@@ -10,7 +10,7 @@ use crate::{deser, logger, rand};
 pub fn client_main() -> Result<(), Mutter> {
     logger::init_logger(true);
 
-    Ok(&PeerSessionConfig::mitre())
+    Ok(&PeerSessionConfig::dicp())
         .and_then(|peer| Ok((peer, TlsConnection::with_peer(peer)?)))
         .and_then(|(peer, tls_conn)| Ok((peer, exchange(peer, tls_conn)?)))
         .and_then(|(peer, auth_session)| Ok((peer, authenticate(auth_session)?)))
@@ -114,8 +114,6 @@ fn run_client(path: &str, host: &str, session: &mut AppSession) -> Result<(), Mu
             if resp.ends_with(&[1, 0, 21]) || resp.ends_with(&[2, 0, 21]) || tc == 0 {
                 break;
             }
-
-            log::info!("next record?");
         }
 
         // remove tickets from the buffer retaining alerts and rest of the response.
