@@ -30,6 +30,39 @@ impl PeerSessionConfig {
         }
     }
 
+    pub fn cloudflare() -> Self {
+        PeerSessionConfig::good(
+            "www.cloudflare.com",
+            "www.cloudflare.com:443",
+            "",
+            &[SupportedGroup::X25519, SupportedGroup::Secp256r1],
+            &[SignatureScheme::RsaPssRsaeSha256],
+            &[CipherSuiteId::TlsChacha20Poly1305Sha256],
+        )
+    }
+
+    pub fn stripe() -> Self {
+        PeerSessionConfig::good(
+            "stripe.com",
+            "stripe.com:443",
+            "/in",
+            &[SupportedGroup::X25519, SupportedGroup::Secp256r1],
+            &[SignatureScheme::RsaPssRsaeSha256],
+            &[CipherSuiteId::TlsChacha20Poly1305Sha256],
+        )
+    }
+
+    pub fn python() -> Self {
+        PeerSessionConfig::good(
+            "www.python.org",
+            "www.python.org:443",
+            "",
+            &[SupportedGroup::X25519, SupportedGroup::Secp256r1],
+            &[SignatureScheme::RsaPssRsaeSha256],
+            &[CipherSuiteId::TlsChacha20Poly1305Sha256],
+        )
+    }
+
     pub fn ebay() -> Self {
         PeerSessionConfig::good(
             "www.ebay.com",

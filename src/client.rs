@@ -10,7 +10,7 @@ use crate::{deser, logger, rand};
 pub fn client_main() -> Result<(), Mutter> {
     logger::init_logger(true);
 
-    Ok(&PeerSessionConfig::dicp())
+    Ok(&PeerSessionConfig::python())
         .and_then(|peer| Ok((peer, TlsConnection::with_peer(peer)?)))
         .and_then(|(peer, tls_conn)| Ok((peer, exchange(peer, tls_conn)?)))
         .and_then(|(peer, auth_session)| Ok((peer, authenticate(auth_session)?)))
