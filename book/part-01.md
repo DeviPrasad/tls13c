@@ -246,22 +246,22 @@ $$
 :warning:
 
 ```
-The family of functions defined above is cryptographically insecure. Each function 
-is determinitic,  stateless, and does not make random choices in key selection. 
-Each function produces the same glyphtext for a given combination of key and plaintext. 
-Now, assume that an adversary has seen a plaintext and its corresponding glyphtext. 
-With this signle sample, our adversery will be able to accurately predict the plaintext 
-for any given glyphtext under the same key, although the adversery has no knowledge of 
+The family of functions defined above is cryptographically insecure. Each function
+is determinitic,  stateless, and does not make random choices in key selection.
+Each function produces the same glyphtext for a given combination of key and plaintext.
+Now, assume that an adversary has seen a plaintext and its corresponding glyphtext.
+With this signle sample, our adversery will be able to accurately predict the plaintext
+for any given glyphtext under the same key, although the adversery has no knowledge of
 the key value. This is a total violation of the confidentiality of communication.
 
-To be secure, schemes must incorporate randomness in their design. It should be 
-computationally infeasible for an adversery to predict even a few bits of plaintext. 
-This should be true even if the adversery has control over the channel, and can influence 
+To be secure, schemes must incorporate randomness in their design. It should be
+computationally infeasible for an adversery to predict even a few bits of plaintext.
+This should be true even if the adversery has control over the channel, and can influence
 the choice of plaintext or ciphertext.
 
-In the following sections we will see definitions of cryptographic security against 
-sophisticated attack models. Modern protools are designed to work in the presence 
-of adversaries who have some control over plaintext and ciphertext traffic over 
+In the following sections we will see definitions of cryptographic security against
+sophisticated attack models. Modern protools are designed to work in the presence
+of adversaries who have some control over plaintext and ciphertext traffic over
 an insecure channel.
 
 ```

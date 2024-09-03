@@ -251,7 +251,7 @@ impl AuthProc for FinishedMsg {
         session: &mut AuthenticationSession,
     ) -> Result<(AuthMsgType, Vec<u8>), Mutter> {
         FinishedMsg::deserialize(deser).and_then(|(serv_fin_msg, msg_slice)| {
-            // RFC 8446m, Page 62.
+            // RFC 8446, Page 62.
             // verify the MAC in the Server Finished message. The MAC is over the value
             // Transcript-Hash(Handshake Context, Certificate, CertificateVerify)
             // using a MAC key derived from the Base Key (server_handshake_traffic_ secret)

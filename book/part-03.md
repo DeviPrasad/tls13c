@@ -14,7 +14,7 @@ Authenticated Encryption with Associated Data (AEAD) [Rog02] has emerged as bein
 An Authenticated Encryption algorithm MAY incorporate internal state information that is maintained between invocations of the encrypt operation, e.g., to allow for the construction of distinct values that are used as internal nonces by the algorithm.  An AEAD algorithm of this sort is called stateful.  This method could be used by an algorithm to provide good security even when the application inputs zero-length nonces.
 
 ### AEADs and Secure Channel
-In [Data Is a Stream: Security of Stream-Based Channels](https://eprint.iacr.org/2017/1191.pdf), Marc Fischlin et.al., 
+In [Data Is a Stream: Security of Stream-Based Channels](https://eprint.iacr.org/2017/1191.pdf), Marc Fischlin et.al.,
 note that while AEAD provides both confidentiality and integrity guarantees for data, on its own, AEAD does not constitute a secure channel. For example, in most practical situations, a secure channel should provide more than simple encryption of messages, but also guarantee detection of (and possibly recovery from) outof-order delivery and replays of messages.
 
 
@@ -48,21 +48,21 @@ In part 1 we will consider the implementation of a TLS 1.3 client program. We ca
         {Finished}
 
     <App>
-    [Application Data]    <------->     [Application Data]    
+    [Application Data]    <------->     [Application Data]
 
 `Figure 1 - Shape of 1-RTT Handshake without Client Authentication.`
 
 While reading the diagram imagine that time progresses vertically downward and interaction flows in the direction of arrows.
 
 In presenting the diagram above, we have reused the notational convention from RFC 8446 with one augmentation.
-    
+
 1. `+` indicates important extensions sent in the message.
 2. `{}` shows messages protected using keys derived from a `[sender]_handshake_traffic_secret`.
 3. `[]` indicates messages protected using keys derived from `[sender]_application_traffic_secrete_N`.
 4. `<>` names a phase or a sub-protocol. This is our own notation; this is not from RFC 8446.
 
 
-Figure 1 shown above is a simplifiesd version of Figure 1 from the RFC. We leave out *pre-shared key (PSK)* mode, and authentication messages, Certificate and CertificateVerify, on the client side. 
+Figure 1 shown above is a simplifiesd version of Figure 1 from the RFC. We leave out *pre-shared key (PSK)* mode, and authentication messages, Certificate and CertificateVerify, on the client side.
 
 
 In this document (`DICP - Part 1`), we will study the technical aspects of implementing the interactions shown in Figure 1. We will delve into the details of various cryptographic primitives used in each step of the interaction. We will try to reason why TLS 1.3 chooses to use crytographic constructions in the fashion it does. We will also try to clarify and elaborate aspects where the text in the RFC is eiher cryptic or is not too helpful.
@@ -91,7 +91,7 @@ At the end of key exchange, the client and server establish a set of shared secr
 
 
 ### Server Parameters
-This message immediately follows ServerHello, and it indicates server's preferences. The server may indicate that the client needs to authenticate (using client's certificate) 
+This message immediately follows ServerHello, and it indicates server's preferences. The server may indicate that the client needs to authenticate (using client's certificate)
 
 
 
@@ -157,13 +157,13 @@ Section 5.4 of RFC 8446 describes many aspects of record padding. In our tests, 
 
 The following diagram shows the strucure of TLSInnerPlaintext without padding zeroes, which is the most common case.
 
-        
+
                     0    1    2    3    4                              PL   PL+1
                     +----+----+----+----+--/-**-**-**-/-+----+----+----+----+
                     |       Handshake Message or Application Data      | CT |
                     +----+----+----+----+--/-**-**-**-/-+----+----+----+----+
                     <------------------- Plaintext ------------------->|    |
-                                        (PL bytes)                           
+                                        (PL bytes)
 
                     |<----------------------------------------------------->|
                                         TlsInnerPlaintext
@@ -210,7 +210,7 @@ In `tlsc`, we support the first three algorithms from this list which includes t
         +----+----+----+----+----+----+----+--/-**-**-**-/--+----+----+----+--/-*-*-/-+----+
         | 23 | 0x0303  |    CL   |                                    |         MAC        |
         +----+----+----+----+----+----+----+--/-**-**-**-/--+----+----+----+--/-*-*-/-+----+
-        <--- Additional Data --->|<-- Encrypted  TlsInnerPlainText -->|<-- AEAD Auth TAG -->          
+        <--- Additional Data --->|<-- Encrypted  TlsInnerPlainText -->|<-- AEAD Auth TAG -->
 
         |<---------------------->|<------------------------------------------------------->|
                 AAD                                   AEAD output
@@ -220,5 +220,7 @@ In `tlsc`, we support the first three algorithms from this list which includes t
 
 
 ### Key Derivation
+The server processes the ClientHello message and determines the ciphersuite for the session. The server responds with the ServerHello message which includes its *key share*, which is server's ephemeral Diffie-Hellman share. In `tlsc`, ClientHello contains two shares, each in an EC group: X25519 and secp256r1. These are the only two `supported_groups` in `tlsc`.
+
 
 ![key_schedule](./images/key_schedule.jpg)

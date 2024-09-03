@@ -1,0 +1,5 @@
+This is a pure rust implementation of TLS 1.3 1-RTT client. This implementation is based on RFC 8446, the IETF specification of TLS 1.3. As a widely deployed transport layer security protocol, TLS powers almost all of secure online transactions. It is therefore natural to be curious about its technical design. This project grew out of sheer intellectual curiosity: how did TLS come to be? how does TLS achive security? what are the primitives used in TLS? Who are the inventors of the cryptographic primitives used in TLS? Why did the protocol designers use the primitives in the way they did? Is it a good idea to develop a non-trivial TLS client program using Rust? Is it worth spending time reading a protocol specification and writing yet another TLS client which no one else will use?
+
+We call this version as `tlsc`, meaning TLS client.
+
+The notes and supporting resources bundled here attempt to describe the technical design of TLS protocol. In writing thse notes, we are interested in understanding not only the technical aspects of cryptographic primitves but also the mathematical roots of those primitives. We use
