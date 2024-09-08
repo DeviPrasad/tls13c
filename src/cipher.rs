@@ -195,6 +195,12 @@ type DerivedSecrets = (
     Vec<u8>,
 );
 
+pub trait TranscriptHash {
+    fn update(&mut self, msg: &[u8]);
+    fn hash(self) -> Vec<u8>;
+}
+
+
 pub trait TlsCipherSuite {
     // type Aead: AeadCore + AeadInPlace + KeyInit + KeySizeUser;
     fn digest_size(&self) -> usize;
@@ -204,8 +210,6 @@ pub trait TlsCipherSuite {
     fn nonce_len(&self) -> usize {
         12
     }
-
-    fn transcript_hash(&self, ctx: &[u8]) -> Vec<u8>;
 
     fn hmac(&self, key: &[u8], data: &[u8]) -> Result<Vec<u8>, Mutter>;
 
@@ -291,6 +295,8 @@ pub trait TlsCipherSuite {
         self.hkdf_expand_label(base_key, "finished", &[], self.digest_size() as u16)
     }
 
+    fn transcript_hash(&self, ctx: &[u8]) -> Vec<u8>;
+
     // 'base_key' is 'client_hs_secret' (client_handshake_traffic_secret in sec 7.1, page 93)
     fn derive_finished_mac(&self, base_key: &[u8], hs_ctx: &[u8]) -> Result<Vec<u8>, Mutter> {
         let finished_key = self.derive_finished_key(base_key);
@@ -329,10 +335,6 @@ impl TlsCipherSuite for TlsChaCha20Poly1305Sha256CipherSuite {
         ChaCha20Poly1305::key_size()
     }
 
-    fn transcript_hash(&self, ctx: &[u8]) -> Vec<u8> {
-        transcript_hash::<Sha256>(ctx)
-    }
-
     fn hmac(&self, key: &[u8], data: &[u8]) -> Result<Vec<u8>, Mutter> {
         hmac_sha256(key, data)
     }
@@ -366,6 +368,10 @@ impl TlsCipherSuite for TlsChaCha20Poly1305Sha256CipherSuite {
         self.hkdf_expand_label(secret, label, &hash, self.digest_size() as u16)
     }
 
+    fn transcript_hash(&self, ctx: &[u8]) -> Vec<u8> {
+        transcript_hash::<Sha256>(ctx)
+    }
+
     fn cipher(&self, key: Vec<u8>, nonce: Vec<u8>) -> Box<dyn TlsCipher> {
         Box::new(TlsChaCha20Ploy1305Cipher::try_from((key, nonce)).unwrap())
     }
@@ -378,10 +384,6 @@ impl TlsCipherSuite for TlsAes128GcmSha256CipherSuite {
 
     fn key_size(&self) -> usize {
         Aes128Gcm::key_size()
-    }
-
-    fn transcript_hash(&self, ctx: &[u8]) -> Vec<u8> {
-        transcript_hash::<Sha256>(ctx)
     }
 
     fn hmac(&self, key: &[u8], data: &[u8]) -> Result<Vec<u8>, Mutter> {
@@ -418,10 +420,15 @@ impl TlsCipherSuite for TlsAes128GcmSha256CipherSuite {
         self.hkdf_expand_label(secret, label, &hash, self.digest_size() as u16)
     }
 
+    fn transcript_hash(&self, ctx: &[u8]) -> Vec<u8> {
+        transcript_hash::<Sha256>(ctx)
+    }
+
     fn cipher(&self, key: Vec<u8>, nonce: Vec<u8>) -> Box<dyn TlsCipher> {
         Box::new(TlsAes128GcmSha256Cipher::try_from((key, nonce)).unwrap())
     }
 }
+
 
 impl TlsCipherSuite for TlsAes256GcmSha384CipherSuite {
     fn digest_size(&self) -> usize {
@@ -430,10 +437,6 @@ impl TlsCipherSuite for TlsAes256GcmSha384CipherSuite {
 
     fn key_size(&self) -> usize {
         Aes256Gcm::key_size()
-    }
-
-    fn transcript_hash(&self, ctx: &[u8]) -> Vec<u8> {
-        transcript_hash::<Sha384>(ctx)
     }
 
     fn hmac(&self, key: &[u8], data: &[u8]) -> Result<Vec<u8>, Mutter> {
@@ -471,6 +474,10 @@ impl TlsCipherSuite for TlsAes256GcmSha384CipherSuite {
         self.hkdf_expand_label(secret, label, &hash, self.digest_size() as u16)
     }
 
+    fn transcript_hash(&self, ctx: &[u8]) -> Vec<u8> {
+        transcript_hash::<Sha384>(ctx)
+    }
+
     fn cipher(&self, key: Vec<u8>, nonce: Vec<u8>) -> Box<dyn TlsCipher> {
         Box::new(TlsAes256GcmSha384Cipher::try_from((key, nonce)).unwrap())
     }
@@ -495,9 +502,54 @@ impl TryFrom<CipherSuiteId> for Box<dyn TlsCipherSuite> {
     }
 }
 
+#[derive(Clone)]
+pub struct TxHash<Digest> {
+    digest: Digest,
+}
+
+impl<D:Digest> Default for TxHash<D> {
+    fn default() -> Self {
+        Self {
+            digest: D::new()
+        }
+    }
+}
+
+impl<D: Digest> TranscriptHash for TxHash<D> {
+    fn update(&mut self, msg: &[u8]) {
+        self.digest.update(msg)
+    }
+
+    fn hash(self) -> Vec<u8> {
+        self.digest.finalize().to_vec()
+    }
+}
+
+
+impl TryFrom<CipherSuiteId> for Box<dyn TranscriptHash> {
+    type Error = Mutter;
+
+    fn try_from(cs: CipherSuiteId) -> Result<Self, Mutter> {
+        match cs {
+            CipherSuiteId::TlsAes128GcmSha256 => {
+                Ok(Box::new(TxHash::<Sha256>::default()))
+            }
+            CipherSuiteId::TlsChacha20Poly1305Sha256 => {
+                Ok(Box::new(TxHash::<Sha256>::default()))
+            }
+            CipherSuiteId::TlsAes256GcmSha384 => {
+                Ok(Box::new(TxHash::<Sha384>::default()))
+            }
+            _ => Mutter::UnsupportedCipherSuite.into(),
+        }
+    }
+}
+
+
 pub struct HandshakeSecrets {
     pub(crate) tls_cipher_suite_name: CipherSuiteId,
-    cipher_suite: Box<dyn TlsCipherSuite>,
+    pub(crate) cipher_suite: Box<dyn TlsCipherSuite>,
+
     hs_secret_master: Vec<u8>,
     serv_cipher: Box<dyn TlsCipher>,
     serv_hs_traffic_secret: Vec<u8>,

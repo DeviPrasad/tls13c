@@ -1,7 +1,7 @@
 use crate::ccs::ChangeCipherSpecMsg;
 use crate::cert::{CertificateMsg, CertificateVerifyMsg};
 use crate::ch::ClientHelloMsg;
-use crate::cipher::{AppTrafficSecrets, HandshakeSecrets, TlsCipherSuite};
+use crate::cipher::{AppTrafficSecrets, HandshakeSecrets, TlsCipherSuite, TranscriptHash};
 use crate::def::{
     CipherSuiteId, HandshakeType, RecordContentType, SignatureScheme, SupportedGroup,
 };
@@ -79,10 +79,10 @@ impl KeyExchangeSession {
     pub fn read_optional_change_cipher_spec(&mut self) -> Result<usize, Mutter> {
         if self.hs_buf_available() < Tls13Record::SIZE + 1
             && !try_fetch::<Tls13Record>(
-                &mut self.serv_stream,
-                &mut self.msg_buf,
-                Tls13Record::SIZE + 1,
-            )
+            &mut self.serv_stream,
+            &mut self.msg_buf,
+            Tls13Record::SIZE + 1,
+        )
         {
             return Mutter::ExpectingChangeCipherSpec.into();
         }
@@ -281,6 +281,7 @@ impl AuthProc for FinishedMsg {
                     // include server finished message in the msg_ctx
                     log::info!("ServerFinished - Verified!");
                     session.update_msg_ctx(&msg_slice);
+                    //let h = tx_hash.hash();
                     (AuthMsgType::Fin(fin_msg), msg_slice)
                 })
         })
@@ -367,6 +368,8 @@ impl<'a> MessageAuthenticator<'a> {
 
     pub fn authenticate(session: &mut AuthenticationSession) -> Result<(), Mutter> {
         let mut pos = 0;
+        let mut tx_hash: Box<dyn TranscriptHash> = session.secrets.tls_cipher_suite_name.try_into()?;
+        tx_hash.update(&session.msg_ctx);
         while !MessageAuthenticator::finished(pos) {
             let ciphertext_rec = session
                 .read_ciphertext_record()
@@ -396,8 +399,8 @@ impl AuthenticationSession {
         self.serv_stream.write(data)
     }
 
-    fn update_msg_ctx(&mut self, bytes: &Vec<u8>) {
-        self.msg_ctx.extend(bytes)
+    fn update_msg_ctx(&mut self, msg: &[u8]) {
+        self.msg_ctx.extend(msg);
     }
 
     fn digest_size(&self) -> usize {
@@ -470,7 +473,7 @@ impl AuthenticationSession {
         self.secrets.server_finished_mac(&self.msg_ctx)
     }
 
-    fn server_certificate_verify_hash(&self) -> Result<Vec<u8>, Mutter> {
+    fn server_certificate_verify_hash(&mut self) -> Result<Vec<u8>, Mutter> {
         self.secrets.server_certificate_verify_hash(&self.msg_ctx)
     }
 
@@ -576,7 +579,7 @@ impl AppSession {
             l1,
             l2, // length of the inner plaintext in big-endian
         ]
-        .into();
+            .into();
 
         // copy data so we can encrypt it in place
         let mut enc_data = data.to_vec();
