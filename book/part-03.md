@@ -62,14 +62,14 @@ In presenting the diagram above, we have reused the notational convention from R
 4. `<>` names a phase or a sub-protocol. This is our own notation; this is not from RFC 8446.
 
 
-Figure 1 shown above is a simplifiesd version of Figure 1 from the RFC. We leave out *pre-shared key (PSK)* mode, and authentication messages, Certificate and CertificateVerify, on the client side.
+Figure 1 shown above is a simplified version of Figure 1 from the RFC. We leave out *pre-shared key (PSK)* mode, and authentication messages, Certificate and CertificateVerify, on the client side.
 
 
-In this document (`DICP - Part 1`), we will study the technical aspects of implementing the interactions shown in Figure 1. We will delve into the details of various cryptographic primitives used in each step of the interaction. We will try to reason why TLS 1.3 chooses to use crytographic constructions in the fashion it does. We will also try to clarify and elaborate aspects where the text in the RFC is eiher cryptic or is not too helpful.
+In this document (`DICP - Part 1`), we will study the technical aspects of implementing the interactions shown in Figure 1. We will delve into the details of various cryptographic primitives used in each step of the interaction. We will try to reason why TLS 1.3 chooses to use cryptographic constructions in the fashion it does. We will also try to clarify and elaborate aspects where the text in the RFC is either cryptic or is not too helpful.
 
 
 ### The Handshake Protocol
-The handshake (sub)protocol is the most important part of TLS. Undoubtedy, the designers spent significant effort in improving its efficiency compared to TLS 1.2. Most of the security guarantees of TLS is deined by the handshake protocol. Section 4 of RFC 8446 (about 54 pages of text) is entitely dedicated for describing the messages and interactions constituting handshake protocol. Even the appendices in the RFC discuss, at length, the security aspects of the handshake protocol.
+The handshake (sub)protocol is the most important part of TLS. Undoubtedly, the designers spent significant effort in improving its efficiency compared to TLS 1.2. Most of the security guarantees of TLS is deined by the handshake protocol. Section 4 of RFC 8446 (about 54 pages of text) is entirely dedicated for describing the messages and interactions constituting handshake protocol. Even the appendices in the RFC discuss, at length, the security aspects of the handshake protocol.
 
 ### Key Exchange
 
@@ -78,21 +78,80 @@ Within the handshake protocol, *Key Exchange* is the first phase. In Figure 1 ab
 1. ClientHello
     - the very first message of the protocol.
     - describes cryptographic primitives and algorithms the client is prepared to use in this session.
-    - includes one or more ephemeral public keys for elliptic-curve Diffie-Hellman exhange.
+    - includes one or more ephemeral public keys for elliptic-curve Diffie-Hellman exchange.
     - includes a 32 byte random number indicating client's session freshness.
 
 2. ServerHello.
     - the last/final plaintext message of the handshake protocol.
     - indicates the cryptographic primitives and algorithms the server has accepted.
-    - includes server's public key for elliptic-curve Diffie-Hellman exhange.
+    - includes server's public key for elliptic-curve Diffie-Hellman exchange.
     - includes a 32 byte random number indicating server's session freshness.
 
 At the end of key exchange, the client and server establish a set of shared secrets used for encrypting (protecting) messages that follow. In addition, the client and server agree upon the cryptographic algorithms (aka ciphersuite) which will be in force for the rest of the session.
 
 
-### Server Parameters
-This message immediately follows ServerHello, and it indicates server's preferences. The server may indicate that the client needs to authenticate (using client's certificate)
+### Key Exchange Phase
 
+Client sends `ClintHello` to the server: 
+```math
+    (ch, \, \{\kappa^c_{g_1},.., \kappa^c_{g_n}\}, \, \{\tau_1,..,\tau_j\}) \hspace*{2.6in}
+    (\Mu_\bot, \, \Chi_\bot, \, \Phi_\bot, \, \Tau_\bot)\\
+    \hspace{1cm}\\
+    \hspace{1cm}{\large{\xrightarrow {client\_hello(sn, \, \{ g_1,..,g_m \}, \, \{s_1,..,s_i\}, \, \{\tau_1,..,\tau_j\}, \, r_c, \, \{k^c_{g_1},.., k^c_{g_m}\})}}}\\
+```
+
+Server processes `ClientHello`, checks if it supports at least one group from the list, validates the signature schemes indicated by the client, and the ciphersuite indicated in `ClientHello`. If it is satisfied, server selects correct certificate, $\phi_s$, for the server name $sn$ indicated in `ClientHello`. It also selects a ciphersuite, $\tau$.
+```math
+    \hspace*{4.3in}
+    (\Mu_\bot, \, \Chi_\bot, \, {\boxed{\phi_s}}, \, {\boxed\tau}) \\
+```
+
+Next, server selects an elliptic curve group from the groups which client supports: $g_i \in  \{ g_1,..,g_m \}$. It produces a fresh Diffie-Hellman key pair $(\kappa^s_{g_i}, k^s_{g_i})$ where $\kappa^s_{g_i}$ is its private key (a secret), and $k^s_{g_i}$ is the public key. The secret is used to calculate DH shared secret, and the latter is shared with the client.
+
+Server performs its part of ECDHE using client's key share and its own private key, producing DH shared secret:
+```math
+    \rho = ecdhe(\kappa^s_{g_i}, \, k^c_{g_i})
+```
+
+Using only $\rho$ as the key material, client derives TLS handshake traffic secrets:
+```math
+    \chi = derive\_handshake\_traffic\_secrets(\rho)
+```
+
+It then updates its environment with the traffic secrets:
+```math
+    \hspace*{4.3in}
+    (\Mu_\bot, \, {\boxed\chi}, \, \phi_s, \, \tau) \\
+```
+
+
+Finally, server constructs the `ServerHello` message, updates its message context, and outputs the message. Note that the ephemeral public key component $k^s_{g_i}$ is part of the `ServerHello` message.
+
+```math
+    (ch, \, \{\kappa^c_{g_1},.., \kappa^c_{g_m}\}, \, \Chi_\bot, \, \Tau_\bot) \hspace*{2.5in}
+    ({\boxed{ch\cdot sh}}, \, \chi, \, \phi_s, \, \tau) \\
+    {\large{\xleftarrow{server\_hello(g_i, \, \tau, \, r_s, \, k^s_{g_i})}}}\\
+```
+
+Client processes`ServerHello`, checks that the group $g_i$ selected by the server is one of the groups it supports:
+$g_i \in \{ g_1,..,g_m \}$. Next, it runs ECDHE using server's ephemeral public key, $k^s_{g_i}$ and its own session private key $\kappa^c_{g_i}$, producing the exact same DH shared secret:
+```math
+    \rho = ecdhe(\kappa^c_{g_i}, \, k^s_{g_i})
+```
+
+Using only $\rho$ as the key material, client derives TLS handshake traffic secrets:
+```math
+    \chi = derive\_handshake\_traffic\_secrets(\rho)
+```
+Thanks to the ingenuity of mathematicians and modern cryptographers, the client ends up with the exact same $\rho$ and $\chi$ as the server.
+
+
+By now, the client has complete information about the ciphersuite and traffic secrets required for secure and authenticated communication. Thus, it creates a fresh environment from the derived components:
+
+```math
+E^c_{auth} = (ch\cdot sh, \, \chi, \, \tau) \\
+
+```
 
 
 ### ClientHello
@@ -111,7 +170,7 @@ indicates that server authentication uses three messages: Certificate, Certifica
 
 ### Protecting Confidentiality, Integrity, and Authenticity of TLS traffic
 
-Section 5.2, page 89 of RFC 8446 presents two type definitions for protected data records. We reproduce the types here with minor notational embellishments. For example, we indicate position of each field relative to the beginning of the data structure. This comes handy while writing constraints on field-lengths. They are also useful in relating the sizes of the components of plaintext and ciphertext. We can eaily turn such specifications into assertions in the Rust progam.
+Section 5.2, page 89 of RFC 8446 presents two type definitions for protected data records. We reproduce the types here with minor notational embellishments. For example, we indicate position of each field relative to the beginning of the data structure. This comes handy while writing constraints on field-lengths. They are also useful in relating the sizes of the components of plaintext and ciphertext. We can easily turn such specifications into assertions in the Rust program.
 
     struct {
         0:1    - ContentType opaque_type = application_data; /* val u8 = 23 */
@@ -127,12 +186,13 @@ To get a better picture, we will turn the above data definitions into a horizont
 ### TlsInnerPlaintext
 This structure holds the plaintext whoch is to be protected. The plaintext may be a handshake message fragment or raw bytes of the application data. It holds handshake message in the authentication phase, and subsequently, post-handshake, it holds application data exchanged by the peers.
 
-
+```
     struct {
         0:PL      - opaque content[TLSPlaintext.length]; /* opaque[PL] */
         PL:1      - ContentType type; /* val u8 = 22 if handshake and 23 if application_data */
         PL+1:ZL   - uint8 zeroes[ZL]; /* ZL == CL-(PL+1)-16 */
     } TLSInnerPlaintext; /* thus, sizeof(TLSInnerPlaintext) = IPL == PL+1+ZL == CL-16 */
+```
 
 In the following discussion we will use PL to mean the size of plaintext, in bytes. For brevity, we use CT for ContentType.
 
@@ -140,6 +200,7 @@ In TLSInnerPlaintext, the first field named `content` holds the plaintext bytes.
 
 The next field `type` holds the content type of the plaintext record. It denotes the `ContentType` of the plaintext in `content` field. CT will have different values depending on the message or data being protected. Thus,
 
+```
         CT = 21 when plaintext is an alert message,
         CT = 22 when plaintext is one of the following TLS handshake messages
                 alert,
@@ -150,14 +211,15 @@ The next field `type` holds the content type of the plaintext record. It denotes
                 finished,
         and
         CT = 23 when the plaintext is application specific data (i.e, HTTP request or response payload).
+```
 
 TLS 1.3 allows encrypted records to be padded with zeroes as long as the total size of TLSInnerPlaintext record doesn't exceed 2^14 + 1 bytes. When the sender inflates the size of an encrypted record, observers cannot tell the actual size of the plaintext. It is obvious padding increases record size, and may adversely impact overall performance.
 
 Section 5.4 of RFC 8446 describes many aspects of record padding. In our tests, we will see that most HTTP servers do not pad either handshake records or application data records.
 
-The following diagram shows the strucure of TLSInnerPlaintext without padding zeroes, which is the most common case.
+The following diagram shows the structure of TLSInnerPlaintext without padding zeroes, which is the most common case.
 
-
+```
                     0    1    2    3    4                              PL   PL+1
                     +----+----+----+----+--/-**-**-**-/-+----+----+----+----+
                     |       Handshake Message or Application Data      | CT |
@@ -172,10 +234,11 @@ The following diagram shows the strucure of TLSInnerPlaintext without padding ze
 
                               TlsInnerPlaintext without padding
 
+```
 
 TlsInnerPlaintext with arbitrary zero padding at the end of the data block may be visualized thus:
 
-
+```
         0    1    2    3    4                              PL   PL+1              PL+1+ZL
         +----+----+----+----+--/-**-**-**-/-+----+----+----+----+-***-/**-**-**/--+
         |       Handshake Message or Application Data      | CT |  padding zeroes |
@@ -189,22 +252,25 @@ TlsInnerPlaintext with arbitrary zero padding at the end of the data block may b
 
                     TlsInnerPlaintext with arbitray-sized zero padding
 
+```
 
 
 ### TlsCiphertext
-TLS 1.3 employs only Authenticated Encryption with Associated Data (AEAD) ciphers. AEADs simultaneously protect confidentiality of the plaintext, and the authenticity and integrity of ciphertext. In other words, with the AEADs supported by TLS 1.3, one will not be able to learn about the plaintext or the encryption key even if one has access to all ciphertexts exchanged by the peers. At the same time, AEAD ciphers will be able to detect if either ciphertext or the MAC has been tampered or altered in transit. Practical AEADs combine a secure cipher with a strong MAC. Their composition has been proved to provide highese levels of security.
+TLS 1.3 employs only Authenticated Encryption with Associated Data (AEAD) ciphers. AEADs simultaneously protect confidentiality of the plaintext, and the authenticity and integrity of ciphertext. In other words, with the AEADs supported by TLS 1.3, one will not be able to learn about the plaintext or the encryption key even if one has access to all ciphertexts exchanged by the peers. At the same time, AEAD ciphers will be able to detect if either ciphertext or the MAC has been tampered or altered in transit. Practical AEADs combine a secure cipher with a strong MAC. Their composition has been proved to provide highest levels of security.
 
 TLS 1.3 defines 5 AEAD algorithms for record protection:
 
+```
         AES_128_GCM         - compliant application MUST implement this AEAD algorithm.
         AES_256_GCM         - compliant application SHOULD implement this AEAD algorithm.
         CHACHA20_POLY1305   - compliant application SHOULD implement this AEAD algorithm.
         AES_128_CCM
         AES_256_CCM
+```
 
 In `tlsc`, we support the first three algorithms from this list which includes the mandatory AES_128_GCM.
 
-
+```
 
         0    1    2    3    4    5    6    7                          5+IPL                 5+CL
         +----+----+----+----+----+----+----+--/-**-**-**-/--+----+----+----+--/-*-*-/-+----+
@@ -217,7 +283,7 @@ In `tlsc`, we support the first three algorithms from this list which includes t
             (5 bytes)                                (CL bytes)
             plaintext                                ciphertext
 
-
+```
 
 ### Key Derivation
 The server processes the ClientHello message and determines the ciphersuite for the session. The server responds with the ServerHello message which includes its *key share*, which is server's ephemeral Diffie-Hellman share. In `tlsc`, ClientHello contains two shares, each in an EC group: X25519 and secp256r1. These are the only two `supported_groups` in `tlsc`.
