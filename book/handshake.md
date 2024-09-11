@@ -1,3 +1,18 @@
+<head>
+    <title>TLS 1.3 Handshake</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css"
+        integrity="sha384-nB0miv6/jRmo5UMMR1wu3Gz6NLsoTkbqJghGIsx//Rlm+ZU03BU6SQNC66uf4l5+" crossorigin="anonymous">
+
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"
+        integrity="sha384-7zkQWkzuo3B5mTepMUcHkMB5jZaolc2xDwL6VFqjFALcbeS9Ggm/Yr2r3Dy4lfFg"
+        crossorigin="anonymous"></script>
+
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+        integrity="sha384-43gviWU0YVjaDtb/GhzOouOXtZMP/7XUzwPTstBeZFe/+rCMvRwr4yROQP43s0Xk" crossorigin="anonymous"
+        onload="renderMathInElement(document.body);"></script>
+</head>
+
+
 ## DICP - Part 1
 
 ### Background
@@ -92,67 +107,85 @@ At the end of key exchange, the client and server establish a set of shared secr
 
 ### Key Exchange Phase
 
-Client sends `ClintHello` to the server: 
-```math
-    (ch, \, \{\kappa^c_{g_1},.., \kappa^c_{g_n}\}, \, \{\tau_1,..,\tau_j\}) \hspace*{2.6in}
-    (\Mu_\bot, \, \Chi_\bot, \, \Phi_\bot, \, \Tau_\bot)\\
-    \hspace{1cm}\\
-    \hspace{1cm}{\large{\xrightarrow {client\_hello(sn, \, \{ g_1,..,g_m \}, \, \{s_1,..,s_i\}, \, \{\tau_1,..,\tau_j\}, \, r_c, \, \{k^c_{g_1},.., k^c_{g_m}\})}}}\\
-```
 
-Server processes `ClientHello`, checks if it supports at least one group from the list, validates the signature schemes indicated by the client, and the ciphersuite indicated in `ClientHello`. If it is satisfied, server selects correct certificate, $\phi_s$, for the server name $sn$ indicated in `ClientHello`. It also selects a ciphersuite, $\tau$.
-```math
-    \hspace*{4.3in}
-    (\Mu_\bot, \, \Chi_\bot, \, {\boxed{\phi_s}}, \, {\boxed\tau}) \\
-```
+Client sends `ClintHello` to the server: 
+
+$$
+    {\begin{array}{l}
+    (h^c, \, \{\kappa^c_{g_1},.., \kappa^c_{g_n}\}, \, \{\tau_1,..,\tau_j\}) {\hspace*{2.6in}}
+    \bot \\
+    \\
+    {\hspace*{2.5cm}}{\large{\xrightarrow {client\_hello(sn, \, \{ g_1,..,g_m \}, \, \{s_1,..,s_i\}, \,
+    \{\tau_1,..,\tau_j\},
+    \, r_c, \, \{k^c_{g_1},.., k^c_{g_m}\})}}}\\
+    \end{array}}
+$$
+
+
+Server processes `ClientHello`, checks if it can support at least one DH group, validates the signature schemes indicated by the client, and the ciphersuite indicated in `ClientHello`. If it is satisfied, server selects the certificate, $\phi_s$, for the server name $sn$ indicated in `ClientHello`.
+
+$$
+    {\phi_s = sever\_cert(sn)}
+$$
+
+The server also chooses a ciphersuite, $\tau_i$:
+
+$$
+    {\tau \in \{ \tau_1,..,\tau_j\}}
+$$
+
 
 Next, server selects an elliptic curve group from the groups which client supports: $g_i \in  \{ g_1,..,g_m \}$. It produces a fresh Diffie-Hellman key pair $(\kappa^s_{g_i}, k^s_{g_i})$ where $\kappa^s_{g_i}$ is its private key (a secret), and $k^s_{g_i}$ is the public key. The secret is used to calculate DH shared secret, and the latter is shared with the client.
 
 Server performs its part of ECDHE using client's key share and its own private key, producing DH shared secret:
-```math
+
+$$
     \rho = ecdhe(\kappa^s_{g_i}, \, k^c_{g_i})
-```
+$$
 
-Using only $\rho$ as the key material, client derives TLS handshake traffic secrets:
-```math
+Using only $\rho$ as the key material, server derives TLS handshake traffic secrets:
+
+$$
     \chi = derive\_handshake\_traffic\_secrets(\rho)
-```
+$$
 
-It then updates its environment with the traffic secrets:
-```math
-    \hspace*{4.3in}
-    (\Mu_\bot, \, {\boxed\chi}, \, \phi_s, \, \tau) \\
-```
+Now that the server has worked out cryptographic context, it prepares it's response, the `ServerHello` message. We name the plaintext bytes constituting this message as $h_s$ for short. It then creates an environment initialized with these components:
 
+$$
+    {E^{auth}_{s} = (h^c\cdot h^s, \, \chi, \, \phi_s, \, \tau)}
+$$
 
-Finally, server constructs the `ServerHello` message, updates its message context, and outputs the message. Note that the ephemeral public key component $k^s_{g_i}$ is part of the `ServerHello` message.
+Finally, it outputs the message. Note that the ephemeral public key component $k^s_{g_i}$ is part of the `ServerHello` message.
 
-```math
-    (ch, \, \{\kappa^c_{g_1},.., \kappa^c_{g_m}\}, \, \Chi_\bot, \, \Tau_\bot) \hspace*{2.5in}
-    ({\boxed{ch\cdot sh}}, \, \chi, \, \phi_s, \, \tau) \\
-    {\large{\xleftarrow{server\_hello(g_i, \, \tau, \, r_s, \, k^s_{g_i})}}}\\
-```
+$$
+    {\begin{array}{l}
+    (h^c, \, \{\kappa^c_{g_1},.., \kappa^c_{g_n}\}, \, \{\tau_1,..,\tau_j\}) \hspace*{2.5in}
+    (h^c\cdot h^s, \, \chi, \, \phi_s, \, \tau) \\
+    \\
+    {\hspace*{5cm}}{\large{\xleftarrow{server\_hello(g_i, \, \tau, \, r_s, \, k^s_{g_i}) \\}}}
+    \end{array}}
+$$
 
 Client processes`ServerHello`, checks that the group $g_i$ selected by the server is one of the groups it supports:
 $g_i \in \{ g_1,..,g_m \}$. Next, it runs ECDHE using server's ephemeral public key, $k^s_{g_i}$ and its own session private key $\kappa^c_{g_i}$, producing the exact same DH shared secret:
-```math
-    \rho = ecdhe(\kappa^c_{g_i}, \, k^s_{g_i})
-```
+
+$$
+    { \rho = ecdhe(\kappa^c_{g_i}, \, k^s_{g_i}) }
+$$
 
 Using only $\rho$ as the key material, client derives TLS handshake traffic secrets:
-```math
-    \chi = derive\_handshake\_traffic\_secrets(\rho)
-```
+
+$$
+    {\chi = derive\_handshake\_traffic\_secrets(\rho)}
+$$
 Thanks to the ingenuity of mathematicians and modern cryptographers, the client ends up with the exact same $\rho$ and $\chi$ as the server.
 
 
 By now, the client has complete information about the ciphersuite and traffic secrets required for secure and authenticated communication. Thus, it creates a fresh environment from the derived components:
 
-```math
-E^c_{auth} = (ch\cdot sh, \, \chi, \, \tau) \\
-
-```
-
+$$
+    { E^{auth}_c = (h^c\cdot h^s, \, \chi, \, \tau) }
+$$
 
 ### ClientHello
 
