@@ -200,7 +200,6 @@ pub trait TranscriptHash {
     fn hash(self) -> Vec<u8>;
 }
 
-
 pub trait TlsCipherSuite {
     // type Aead: AeadCore + AeadInPlace + KeyInit + KeySizeUser;
     fn digest_size(&self) -> usize;
@@ -429,7 +428,6 @@ impl TlsCipherSuite for TlsAes128GcmSha256CipherSuite {
     }
 }
 
-
 impl TlsCipherSuite for TlsAes256GcmSha384CipherSuite {
     fn digest_size(&self) -> usize {
         <Sha384 as OutputSizeUser>::output_size()
@@ -507,11 +505,9 @@ pub struct TxHash<Digest> {
     digest: Digest,
 }
 
-impl<D:Digest> Default for TxHash<D> {
+impl<D: Digest> Default for TxHash<D> {
     fn default() -> Self {
-        Self {
-            digest: D::new()
-        }
+        Self { digest: D::new() }
     }
 }
 
@@ -525,26 +521,18 @@ impl<D: Digest> TranscriptHash for TxHash<D> {
     }
 }
 
-
 impl TryFrom<CipherSuiteId> for Box<dyn TranscriptHash> {
     type Error = Mutter;
 
     fn try_from(cs: CipherSuiteId) -> Result<Self, Mutter> {
         match cs {
-            CipherSuiteId::TlsAes128GcmSha256 => {
-                Ok(Box::new(TxHash::<Sha256>::default()))
-            }
-            CipherSuiteId::TlsChacha20Poly1305Sha256 => {
-                Ok(Box::new(TxHash::<Sha256>::default()))
-            }
-            CipherSuiteId::TlsAes256GcmSha384 => {
-                Ok(Box::new(TxHash::<Sha384>::default()))
-            }
+            CipherSuiteId::TlsAes128GcmSha256 => Ok(Box::new(TxHash::<Sha256>::default())),
+            CipherSuiteId::TlsChacha20Poly1305Sha256 => Ok(Box::new(TxHash::<Sha256>::default())),
+            CipherSuiteId::TlsAes256GcmSha384 => Ok(Box::new(TxHash::<Sha384>::default())),
             _ => Mutter::UnsupportedCipherSuite.into(),
         }
     }
 }
-
 
 pub struct HandshakeSecrets {
     pub(crate) tls_cipher_suite_name: CipherSuiteId,

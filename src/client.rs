@@ -5,12 +5,10 @@ use crate::err::Mutter;
 use crate::ext::ClientExtensions;
 use crate::session::{AppSession, AuthenticationSession, KeyExchangeSession, MessageAuthenticator};
 use crate::stream::TlsConnection;
-use crate::{deser, logger, rand};
+use crate::{deser, rand};
 
 pub fn client_main() -> Result<(), Mutter> {
-    logger::init_logger(true);
-
-    Ok(&PeerSessionConfig::microsoft())
+    Ok(&PeerSessionConfig::stripe())
         .and_then(|peer| Ok((peer, TlsConnection::with_peer(peer)?)))
         .and_then(|(peer, tls_conn)| Ok((peer, exchange(peer, tls_conn)?)))
         .and_then(|(peer, auth_session)| Ok((peer, authenticate(auth_session)?)))
@@ -136,7 +134,7 @@ fn run_client(path: &str, host: &str, session: &mut AppSession) -> Result<(), Mu
     {}
 
     eprintln!("\n");
-    eprint!("{:#}", String::from_utf8_lossy(&resp[0..]));
+    //eprint!("{:#}", String::from_utf8_lossy(&resp[0..]));
     eprintln!("\n");
     Ok(())
 }

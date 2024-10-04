@@ -109,15 +109,15 @@ At the end of key exchange, the client and server establish a set of shared secr
 
 
 Client sends `ClintHello` to the server: 
-
+<a id="xref-client-hello-spec"></a>
 $$
     {\begin{array}{l}
-    (h^c, \, \{\kappa^c_{g_1},.., \kappa^c_{g_n}\}, \, \{\tau_1,..,\tau_j\}) {\hspace*{2.6in}}
+    (h^c, \, \{\tau_1,..,\tau_j\}, \, \{\kappa^c_{g_1},.., \kappa^c_{g_n}\}) {\hspace*{2.6in}}
     \bot \\
     \\
     {\hspace*{2.5cm}}{\large{\xrightarrow {client\_hello(sn, \, \{ g_1,..,g_m \}, \, \{s_1,..,s_i\}, \,
     \{\tau_1,..,\tau_j\},
-    \, r_c, \, \{k^c_{g_1},.., k^c_{g_m}\})}}}\\
+    \, \{k^c_{g_1},.., k^c_{g_m}\}, \, r_c)}}}\\
     \end{array}}
 $$
 
@@ -162,7 +162,7 @@ $$
     (h^c, \, \{\kappa^c_{g_1},.., \kappa^c_{g_n}\}, \, \{\tau_1,..,\tau_j\}) \hspace*{2.5in}
     (h^c\cdot h^s, \, \chi, \, \phi_s, \, \tau) \\
     \\
-    {\hspace*{5cm}}{\large{\xleftarrow{server\_hello(g_i, \, \tau, \, r_s, \, k^s_{g_i}) \\}}}
+    {\hspace*{5cm}}{\large{\xleftarrow{server\_hello(g_i, \, \tau, \, k^s_{g_i}, \, r_s) \\}}}
     \end{array}}
 $$
 
@@ -178,27 +178,37 @@ Using only $\rho$ as the key material, client derives TLS handshake traffic secr
 $$
     {\chi = derive\_handshake\_traffic\_secrets(\rho)}
 $$
-Thanks to the ingenuity of mathematicians and modern cryptographers, the client ends up with the exact same $\rho$ and $\chi$ as the server.
+
+Thanks to some neat elliptic-curve math, the client ends up with the exact same $\rho$ and $\chi$ as the server. The $\chi$ component is what the TLS spec calls `server_handshake_traffic_secret`.
 
 
-By now, the client has complete information about the ciphersuite and traffic secrets required for secure and authenticated communication. Thus, it creates a fresh environment from the derived components:
+By the end of this message exchange, the client is equipped to exchange encrypted and authenticated messages with the server. Therefore, the client initializes its session with the message context, session ciphersuite, and the traffic secrets:
 
 $$
-    { E^{auth}_c = (h^c\cdot h^s, \, \chi, \, \tau) }
+    { E^{auth}_c = (h^c\cdot h^s, \, \tau, \, \chi) }
 $$
 
-### ClientHello
+Note that the message context is merely a concatenation of *plaintext slices* of ClientHello and ServerHello. The plaintext slices start from the sixth byte (offset 5 in the zero-based index). The first five bytes of ClientHello and ServerHello are data layer record headers. This is clearly shown in the two diagrams below. Record layer headers have a gray background while the plaintext fragments are shown in the clear.
 
+**ClientHello**
 ![client_hello_layout](./images/client_hello_layout.jpg)
 
 
-### ServerHello
-
+**ServerHello**
 ![server_hello_layout](./images/server_hello_layout.jpg)
 
+#### Encrypted Extensions
+As a part of handshake, the server is required to send the EncryptedExtensions message immediately after the ServerHello message ([section 4.3.1, page 60 of TLS](#xref-tls1.3-enc-ext)). This is the first encrypted message in the traffic. The server  encrypted using the key tucked in the $\Chi$ component of the session
 
-### Authentication
-indicates that server authentication uses three messages: Certificate, CertificateVerify, and Finished.
+
+### Authentication Phase
+In 1-RTT handshake, the server sends out the following three messages: `Certificate`, `Certificate Verify`, and `Finished`. These three messages constitute server authentication, certificate signing key confirmation, and ensuring handshake integrity, respectively. The client *has to processes* these messages in the same sequence. Each message carries incremental information necessary to verify the authenticity as well as the integrity of the previous messages. We can summarize the information contained in each of these messages, and the actions client is required to carry out while processing these messages.
+
+First, the `Certificate` message contains server's (non-empty) certificate chain. It is mandatory for servers to provide a list of X.509 certificates. Recall that the `server_name` extension in `ClientHello` identifies a server endpoint. The first certificate in the chain represents the endpoint identified by `server_name`. (Recall also that `sn` argument in [ClientHello](#xref-client-hello-spec) stands for `server_name`). The first certificate in the list, therefore, contains a public key to be used to verify the contents of the immediately following `CertificateVerify` message.
+
+
+Second, the `Certificate Verify` 
+
 
 
 ### Protecting Confidentiality, Integrity, and Authenticity of TLS traffic
@@ -323,3 +333,9 @@ The server processes the ClientHello message and determines the ciphersuite for 
 
 
 ![key_schedule](./images/key_schedule.jpg)
+
+
+## References
+
+<a id="xref-tls1.3-enc-ext"></a>
+The Transport Layer Security (TLS) Protocol Version 1.3. https://www.rfc-editor.org/rfc/rfc8446.html#section-4.3.1

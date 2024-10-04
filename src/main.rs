@@ -20,6 +20,8 @@ mod stream;
 mod types;
 
 fn main() {
+    logger::init_logger(true);
+
     if let Err(e) = client::client_main() {
         log::error!("{e:#?}");
     }
@@ -68,7 +70,7 @@ mod tls_cl_tests {
 
             let mut ch_msg_buf = vec![0u8; ch.size()];
             let res = ch.serialize(ch_msg_buf.as_mut_slice());
-            assert!(matches!(res, Ok(_)));
+            assert!(res.is_ok());
 
             let mut buf = Vec::new();
             serv_stream.write(&ch_msg_buf).expect("write");
@@ -79,7 +81,7 @@ mod tls_cl_tests {
             assert!(sh.is_server_retry());
         } else {
             eprintln!("Error - connect attempt failed for {}", peer.id);
-            assert!(false);
+            panic!();
         }
     }
 }

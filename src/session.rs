@@ -58,17 +58,34 @@ impl KeyExchangeSession {
         self.msg_buf = Vec::new();
         if !try_fetch::<Tls13Record>(&mut self.serv_stream, &mut self.msg_buf, Tls13Record::SIZE) {
             log::error!("Bad handshake record - expecting ServerHello.");
-            Mutter::ExpectingServerHello.into()
-        } else {
-            let mut deser = DeSer::new(&self.msg_buf);
-            let (sh, _) = ServerHelloMsg::deserialize(&mut deser)?;
-            self.cursor = Tls13Record::SIZE + sh.fragment_len as usize;
-            self.msg_ctx
-                .extend(&self.msg_buf[Tls13Record::SIZE..self.cursor]);
-
-            log::info!("ServerHello - Validated");
-            Ok(sh)
+            return Mutter::ExpectingServerHello.into()
         }
+        let mut deser = DeSer::new(&self.msg_buf);
+
+        // check if the server has raised an alert.
+        // RFC 8446, Section 6. Alert Protocol, pages 85-86.
+        if deser.peek_u8() == RecordContentType::Alert as u8 {
+            if deser.peek_u8_at(5) == 2 { // Fatal Error
+                return match deser.peek_u8_at(6) {
+                    0 => Mutter::AlertCloseNotify.into(),
+                    40 => Mutter::AlertHandshakeFailure.into(),
+                    47 => Mutter::AlertIllegalParameter.into(),
+                    109 => Mutter::AlertMissingExtension.into(),
+                    110 => Mutter::AlertUnsupportedExtension.into(),
+                    112 => Mutter::AlertUnrecognizedName.into(),
+                    _ => Mutter::AlertGeneric.into(),
+                }
+            } else {
+                deser.seek(7); // skip past the alert
+            }
+        }
+
+        let (sh, _) = ServerHelloMsg::deserialize(&mut deser)?;
+        self.cursor = Tls13Record::SIZE + sh.fragment_len as usize;
+        self.msg_ctx
+            .extend(&self.msg_buf[Tls13Record::SIZE..self.cursor]);
+        log::info!("ServerHello - Validated");
+        Ok(sh)
     }
 
     fn hs_buf_available(&self) -> usize {
@@ -261,10 +278,6 @@ impl AuthProc for FinishedMsg {
                     Ok(_) => Ok((serv_fin_msg, msg_slice)),
                     Err(e) => Err(e),
                 })
-                .map_err(|e| {
-                    log::error!("ServerFinished - Invalid Tag!");
-                    e
-                })
                 .and_then(|res| {
                     if deser.peek_u8() == RecordContentType::Handshake as u8 {
                         deser.ru8();
@@ -368,7 +381,8 @@ impl<'a> MessageAuthenticator<'a> {
 
     pub fn authenticate(session: &mut AuthenticationSession) -> Result<(), Mutter> {
         let mut pos = 0;
-        let mut tx_hash: Box<dyn TranscriptHash> = session.secrets.tls_cipher_suite_name.try_into()?;
+        let mut tx_hash: Box<dyn TranscriptHash> =
+            session.secrets.tls_cipher_suite_name.try_into()?;
         tx_hash.update(&session.msg_ctx);
         while !MessageAuthenticator::finished(pos) {
             let ciphertext_rec = session

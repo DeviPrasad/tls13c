@@ -54,20 +54,20 @@ impl<'a> DeSer<'a> {
             | (self.bytes[self.cursor() + 2] as u32)
     }
 
-    // peek a 16 bit value at (cursor + offset)
+    // peek a 8 bit value at (cursor + i)
     pub fn peek_u8_at(&self, i: usize) -> u8 {
         assert!(self.cursor() + i < self.len());
         self.bytes[self.cursor() + i]
     }
 
-    // peek a 16 bit value at (cursor + offset)
+    // peek a 16 bit value at (cursor + i)
     pub fn peek_u16_at(&self, i: usize) -> u16 {
         assert!(self.cursor() + i + 1 < self.len());
         let j = self.cursor() + i;
         ((self.bytes[j] as u16) << 8) | (self.bytes[j + 1] as u16)
     }
 
-    // peek a 24 bit value at (cursor + offset)
+    // peek a 24 bit value at (cursor + i)
     pub fn peek_u24_at(&self, i: usize) -> u32 {
         assert!(self.cursor() + i + 2 < self.len());
         let j = self.cursor() + i;

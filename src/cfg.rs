@@ -187,12 +187,9 @@ impl PeerSessionConfig {
             "letsencrypt.org",
             "letsencrypt.org:443",
             "",
-            &[SupportedGroup::X25519],
-            &[
-                SignatureScheme::Ed25519,
-                SignatureScheme::EcdsaSecp256r1Sha256,
-            ],
-            &[CipherSuiteId::TlsAes256GcmSha384],
+            &[SupportedGroup::Secp256r1], // anything else throws AlertIllegalParameter.
+            &[SignatureScheme::EcdsaSecp256r1Sha256], // anything else throws an AlertHandshakeFailure.
+            &[CipherSuiteId::TlsChacha20Poly1305Sha256],
         )
     }
 
@@ -203,7 +200,7 @@ impl PeerSessionConfig {
             "www.india.gov.in:443",
             "",
             &[SupportedGroup::X25519],
-            &[SignatureScheme::Ed25519, SignatureScheme::RsaPssRsaeSha256],
+            &[SignatureScheme::RsaPssRsaeSha256],
             &[CipherSuiteId::TlsChacha20Poly1305Sha256],
         )
     }

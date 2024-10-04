@@ -67,7 +67,7 @@ impl Stream for TlsStream {
                 }
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                     let copied = buf.len() - buf_len_on_enter;
-                    if blocked > Self::MAX_BLOCKED_RETRY/2 && copied > 0 {
+                    if blocked > Self::MAX_BLOCKED_RETRY / 2 && copied > 0 {
                         return Ok(copied);
                     }
                     blocked += 1;
