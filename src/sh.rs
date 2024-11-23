@@ -1,10 +1,9 @@
 use crate::def::{
     CipherSuiteId, HandshakeType, LegacyRecordVersion, LegacyTlsVersion, Random, RecordContentType,
-    SupportedGroup,
 };
 use crate::deser::DeSer;
-use crate::err::Mutter;
-use crate::ext::{ServerExtensions, ServerSessionPublicKey};
+use crate::err::Error;
+use crate::ext::{ServerExtensions, ServerPublicKey};
 use crate::rec::Tls13Record;
 use crate::session::KeyExchangeSession;
 
@@ -44,32 +43,32 @@ pub struct ServerHelloMsg {
 
 #[allow(dead_code)]
 impl ServerHelloMsg {
-    pub fn deserialize(deser: &mut DeSer) -> Result<(ServerHelloMsg, usize), Mutter> {
+    pub fn deserialize(deser: &mut DeSer) -> Result<(ServerHelloMsg, usize), Error> {
         if !deser.have(Tls13Record::SIZE + 4) {
-            return Mutter::DeserializationBufferInsufficient.into();
+            return Error::DeserializationBufferInsufficient.into();
         }
         let rec = Tls13Record::read_handshake(deser)?;
         let sh_msg_start_cursor = deser.cursor();
         assert_eq!(deser.cursor(), 5);
         if HandshakeType::from(deser.ru8()) != HandshakeType::ServerHello {
-            return Mutter::HandshakeType.into();
+            return Error::HandshakeType.into();
         }
         let msg_len: u32 = deser.ru24();
         if !(32..=KeyExchangeSession::MSG_SIZE_MAX).contains(&msg_len) {
-            return Mutter::MsgLen.into();
+            return Error::MsgLen.into();
         }
         // msg header would have consumed 4 bytes: 1 for message type and 3 for the fragment length
         // note that record length includes the msg header too.
         assert_eq!(rec.len as u32 - 4, msg_len);
         if !deser.cmp_u16(KeyExchangeSession::LEGACY_VER_0X0303) {
-            return Mutter::LegacyTLS13MsgVer.into();
+            return Error::LegacyTLS13MsgVer.into();
         }
         let read_server_random =
-            |deser: &mut DeSer| deser.slice(32).try_into().map_err(|_| Mutter::RandomVal);
+            |deser: &mut DeSer| deser.slice(32).try_into().map_err(|_| Error::RandomVal);
         let random: Random = read_server_random(deser)?;
         let legacy_session_id: Vec<u8> = deser.vlu8_vec();
         if !legacy_session_id.is_empty() {
-            return Mutter::UnexpectedSessionIdInServerHello.into();
+            return Error::UnexpectedSessionIdInServerHello.into();
         }
         let cipher_suite = CipherSuiteId::try_from(deser.ru16())?;
         let _compression_methods_ = deser.zlu8()?;
@@ -96,20 +95,16 @@ impl ServerHelloMsg {
         Ok((sh, sh_msg_start_cursor))
     }
 
-    pub fn key_share(
+    pub fn get_matching_server_public_key(
         &self,
-        cl_key_shares: &[ServerSessionPublicKey],
-    ) -> Result<ServerSessionPublicKey, Mutter> {
-        let serv_key_share: ServerSessionPublicKey = self.extensions.0.clone();
-        for client_key_share in cl_key_shares {
-            if client_key_share.group == serv_key_share.group
-                && (client_key_share.group == SupportedGroup::X25519
-                    || client_key_share.group == SupportedGroup::Secp256r1)
-            {
-                return Ok(serv_key_share);
-            }
-        }
-        Mutter::ServerKeyShareBad.into()
+        client_key_shares: &[ServerPublicKey],
+    ) -> Result<ServerPublicKey, Error> {
+            let serv_key_share: ServerPublicKey = self.extensions.0.clone();
+        client_key_shares
+            .iter()
+            .find(|&key| key.matches(&serv_key_share))
+            .map(|_| serv_key_share)
+            .ok_or(Error::ServerKeyShareBad)
     }
 
     // sec 4.1.3 ServerHello, page 32

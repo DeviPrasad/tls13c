@@ -9,11 +9,11 @@ use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256, Sha384};
 
 use crate::def::CipherSuiteId;
-use crate::err::Mutter;
+use crate::err::Error;
 
 macro_rules! tls13c_crypto_cipher_inplace_decrypt {
     () => {
-        fn decrypt_next(&mut self, ad: &[u8], text: &mut Vec<u8>) -> Result<(), Mutter> {
+        fn decrypt_next(&mut self, ad: &[u8], text: &mut Vec<u8>) -> Result<(), Error> {
             let mut iv_bytes: [u8; 12] = [0; 12];
             assert_eq!(self.iv.len(), 12);
             iv_bytes.copy_from_slice(&self.iv);
@@ -32,7 +32,7 @@ macro_rules! tls13c_crypto_cipher_inplace_decrypt {
                 .decrypt_in_place(iv, ad, text as &mut dyn aead::Buffer)
                 .map_err(|e| {
                     log::error!("decrypt_next error: {}", e);
-                    Mutter::DecryptionFailed
+                    Error::DecryptionFailed
                 })
         }
     };
@@ -40,7 +40,7 @@ macro_rules! tls13c_crypto_cipher_inplace_decrypt {
 
 macro_rules! tls13c_crypto_cipher_inplace_encrypt {
     () => {
-        fn encrypt_next(&mut self, ad: &[u8], out: &mut Vec<u8>) -> Result<(), Mutter> {
+        fn encrypt_next(&mut self, ad: &[u8], out: &mut Vec<u8>) -> Result<(), Error> {
             let mut iv_bytes: [u8; 12] = [0; 12];
             assert_eq!(self.iv.len(), 12);
             iv_bytes.copy_from_slice(&self.iv);
@@ -58,7 +58,7 @@ macro_rules! tls13c_crypto_cipher_inplace_encrypt {
             self.nr += 1;
             self.cipher
                 .encrypt_in_place(iv, ad, out as &mut dyn aead::Buffer)
-                .map_err(|_| Mutter::DecryptionFailed)
+                .map_err(|_| Error::DecryptionFailed)
         }
     };
 }
@@ -82,20 +82,20 @@ pub type IV = Vec<u8>;
 
 #[allow(dead_code)]
 pub trait TlsCipher {
-    fn decrypt_next(&mut self, ad: &[u8], out: &mut Vec<u8>) -> Result<(), Mutter>;
-    fn encrypt_next(&mut self, ad: &[u8], out: &mut Vec<u8>) -> Result<(), Mutter>;
+    fn decrypt_next(&mut self, ad: &[u8], out: &mut Vec<u8>) -> Result<(), Error>;
+    fn encrypt_next(&mut self, ad: &[u8], out: &mut Vec<u8>) -> Result<(), Error>;
 }
 
 impl TryFrom<(SymKey, IV)> for TlsAes128GcmSha256Cipher {
-    type Error = Mutter;
+    type Error = Error;
 
-    fn try_from((key, iv): (SymKey, IV)) -> Result<TlsAes128GcmSha256Cipher, Mutter> {
+    fn try_from((key, iv): (SymKey, IV)) -> Result<TlsAes128GcmSha256Cipher, Error> {
         if iv.len() != 12 {
-            Err(Mutter::AEADNonceLenBad)
+            Err(Error::AEADNonceLenBad)
         } else if key.len() != Aes128Gcm::key_size() {
-            Err(Mutter::AEADKeyLenBad)
+            Err(Error::AEADKeyLenBad)
         } else if iv.eq(&[0; 12]) {
-            Err(Mutter::BadIV)
+            Err(Error::BadIV)
         } else {
             let key = Key::<Aes128Gcm>::from_slice(&key);
             Ok(Self {
@@ -108,15 +108,15 @@ impl TryFrom<(SymKey, IV)> for TlsAes128GcmSha256Cipher {
 }
 
 impl TryFrom<(SymKey, IV)> for TlsAes256GcmSha384Cipher {
-    type Error = Mutter;
+    type Error = Error;
 
-    fn try_from((key, iv): (SymKey, IV)) -> Result<TlsAes256GcmSha384Cipher, Mutter> {
+    fn try_from((key, iv): (SymKey, IV)) -> Result<TlsAes256GcmSha384Cipher, Error> {
         if iv.len() != 12 {
-            Err(Mutter::AEADNonceLenBad)
+            Err(Error::AEADNonceLenBad)
         } else if key.len() != Aes256Gcm::key_size() {
-            Err(Mutter::AEADKeyLenBad)
+            Err(Error::AEADKeyLenBad)
         } else if iv.eq(&[0; 12]) {
-            Err(Mutter::BadIV)
+            Err(Error::BadIV)
         } else {
             let key = Key::<Aes256Gcm>::from_slice(&key);
             Ok(Self {
@@ -129,15 +129,15 @@ impl TryFrom<(SymKey, IV)> for TlsAes256GcmSha384Cipher {
 }
 
 impl TryFrom<(SymKey, IV)> for TlsChaCha20Ploy1305Cipher {
-    type Error = Mutter;
+    type Error = Error;
 
-    fn try_from((key, nonce): (SymKey, IV)) -> Result<TlsChaCha20Ploy1305Cipher, Mutter> {
+    fn try_from((key, nonce): (SymKey, IV)) -> Result<TlsChaCha20Ploy1305Cipher, Error> {
         if nonce.len() != 12 {
-            Err(Mutter::AEADNonceLenBad)
+            Err(Error::AEADNonceLenBad)
         } else if key.len() != ChaCha20Poly1305::key_size() {
-            Err(Mutter::AEADKeyLenBad)
+            Err(Error::AEADKeyLenBad)
         } else if nonce.eq(&[0; 12]) {
-            Err(Mutter::BadIV)
+            Err(Error::BadIV)
         } else {
             let key = Key::<ChaCha20Poly1305>::from_slice(&key);
             Ok(Self {
@@ -210,7 +210,7 @@ pub trait TlsCipherSuite {
         12
     }
 
-    fn hmac(&self, key: &[u8], data: &[u8]) -> Result<Vec<u8>, Mutter>;
+    fn hmac(&self, key: &[u8], data: &[u8]) -> Result<Vec<u8>, Error>;
 
     fn hkdf_extract(&self, salt: &[u8], ikm: &[u8]) -> Vec<u8>;
 
@@ -297,12 +297,12 @@ pub trait TlsCipherSuite {
     fn transcript_hash(&self, ctx: &[u8]) -> Vec<u8>;
 
     // 'base_key' is 'client_hs_secret' (client_handshake_traffic_secret in sec 7.1, page 93)
-    fn derive_finished_mac(&self, base_key: &[u8], hs_ctx: &[u8]) -> Result<Vec<u8>, Mutter> {
+    fn derive_finished_mac(&self, base_key: &[u8], hs_ctx: &[u8]) -> Result<Vec<u8>, Error> {
         let finished_key = self.derive_finished_key(base_key);
         self.hmac(&finished_key, &self.transcript_hash(hs_ctx))
     }
 
-    fn derive_certificate_verify_hash(&self, hs_ctx: &[u8]) -> Result<Vec<u8>, Mutter> {
+    fn derive_certificate_verify_hash(&self, hs_ctx: &[u8]) -> Result<Vec<u8>, Error> {
         Ok(self.transcript_hash(hs_ctx))
     }
 
@@ -316,7 +316,7 @@ pub struct TlsAes128GcmSha256CipherSuite {}
 pub struct TlsAes256GcmSha384CipherSuite {}
 
 #[derive(Default)]
-// pub struct TlsChacha20Poly1305Sha256Cipher {
+// pub struct TlsChaCha20Poly1305Sha256Cipher {
 pub struct TlsChaCha20Poly1305Sha256CipherSuite {}
 
 impl TlsChaCha20Poly1305Sha256CipherSuite {}
@@ -334,7 +334,7 @@ impl TlsCipherSuite for TlsChaCha20Poly1305Sha256CipherSuite {
         ChaCha20Poly1305::key_size()
     }
 
-    fn hmac(&self, key: &[u8], data: &[u8]) -> Result<Vec<u8>, Mutter> {
+    fn hmac(&self, key: &[u8], data: &[u8]) -> Result<Vec<u8>, Error> {
         hmac_sha256(key, data)
     }
 
@@ -350,11 +350,11 @@ impl TlsCipherSuite for TlsChaCha20Poly1305Sha256CipherSuite {
         output_len: u16,
     ) -> Vec<u8> {
         let hk = Hkdf::<Sha256>::from_prk(secret)
-            .expect("TlsChacha20Poly1305Sha256 - random secret value to be large enough");
+            .expect("TlsChaCha20Poly1305Sha256 - random secret value to be large enough");
         let (hkdf_label, hkdf_label_full_len) = self.hkdf_label(secret, label, ctx, output_len);
         let mut okm = vec![0u8; output_len as usize];
         hk.expand(&hkdf_label, &mut okm)
-            .expect("TlsChacha20Poly1305Sha256 - sufficient Sha256 output length to expand");
+            .expect("TlsChaCha20Poly1305Sha256 - sufficient Sha256 output length to expand");
         assert_ne!(okm, [0u8; 42]);
         assert_eq!(hkdf_label.len(), hkdf_label_full_len as usize);
         okm
@@ -385,7 +385,7 @@ impl TlsCipherSuite for TlsAes128GcmSha256CipherSuite {
         Aes128Gcm::key_size()
     }
 
-    fn hmac(&self, key: &[u8], data: &[u8]) -> Result<Vec<u8>, Mutter> {
+    fn hmac(&self, key: &[u8], data: &[u8]) -> Result<Vec<u8>, Error> {
         hmac_sha256(key, data)
     }
 
@@ -437,7 +437,7 @@ impl TlsCipherSuite for TlsAes256GcmSha384CipherSuite {
         Aes256Gcm::key_size()
     }
 
-    fn hmac(&self, key: &[u8], data: &[u8]) -> Result<Vec<u8>, Mutter> {
+    fn hmac(&self, key: &[u8], data: &[u8]) -> Result<Vec<u8>, Error> {
         hmac_sha384(key, data)
     }
 
@@ -482,20 +482,20 @@ impl TlsCipherSuite for TlsAes256GcmSha384CipherSuite {
 }
 
 impl TryFrom<CipherSuiteId> for Box<dyn TlsCipherSuite> {
-    type Error = Mutter;
+    type Error = Error;
 
-    fn try_from(cs: CipherSuiteId) -> Result<Self, Mutter> {
+    fn try_from(cs: CipherSuiteId) -> Result<Self, Error> {
         match cs {
             CipherSuiteId::TlsAes128GcmSha256 => {
                 Ok(Box::new(TlsAes128GcmSha256CipherSuite::default()))
             }
-            CipherSuiteId::TlsChacha20Poly1305Sha256 => {
+            CipherSuiteId::TlsChaCha20Poly1305Sha256 => {
                 Ok(Box::new(TlsChaCha20Poly1305Sha256CipherSuite::default()))
             }
             CipherSuiteId::TlsAes256GcmSha384 => {
                 Ok(Box::new(TlsAes256GcmSha384CipherSuite::default()))
             }
-            _ => Mutter::UnsupportedCipherSuite.into(),
+            _ => Error::UnsupportedCipherSuite.into(),
         }
     }
 }
@@ -522,14 +522,14 @@ impl<D: Digest> TranscriptHash for TxHash<D> {
 }
 
 impl TryFrom<CipherSuiteId> for Box<dyn TranscriptHash> {
-    type Error = Mutter;
+    type Error = Error;
 
-    fn try_from(cs: CipherSuiteId) -> Result<Self, Mutter> {
+    fn try_from(cs: CipherSuiteId) -> Result<Self, Error> {
         match cs {
             CipherSuiteId::TlsAes128GcmSha256 => Ok(Box::new(TxHash::<Sha256>::default())),
-            CipherSuiteId::TlsChacha20Poly1305Sha256 => Ok(Box::new(TxHash::<Sha256>::default())),
+            CipherSuiteId::TlsChaCha20Poly1305Sha256 => Ok(Box::new(TxHash::<Sha256>::default())),
             CipherSuiteId::TlsAes256GcmSha384 => Ok(Box::new(TxHash::<Sha384>::default())),
-            _ => Mutter::UnsupportedCipherSuite.into(),
+            _ => Error::UnsupportedCipherSuite.into(),
         }
     }
 }
@@ -574,24 +574,24 @@ impl HandshakeSecrets {
         self.cipher_suite.digest_size()
     }
 
-    pub fn decrypt_next(&mut self, ad: &[u8], out: &mut Vec<u8>) -> Result<(), Mutter> {
+    pub fn decrypt_next(&mut self, ad: &[u8], out: &mut Vec<u8>) -> Result<(), Error> {
         self.serv_cipher.decrypt_next(ad, out)
     }
 
-    pub fn encrypt_next(&mut self, ad: &[u8], out: &mut Vec<u8>) -> Result<(), Mutter> {
+    pub fn encrypt_next(&mut self, ad: &[u8], out: &mut Vec<u8>) -> Result<(), Error> {
         self.cl_cipher.encrypt_next(ad, out)
     }
 
-    pub fn server_finished_mac(&self, hs_ctx: &[u8]) -> Result<Vec<u8>, Mutter> {
+    pub fn server_finished_mac(&self, hs_ctx: &[u8]) -> Result<Vec<u8>, Error> {
         self.cipher_suite
             .derive_finished_mac(&self.serv_hs_traffic_secret, hs_ctx)
     }
 
-    pub fn server_certificate_verify_hash(&self, hs_ctx: &[u8]) -> Result<Vec<u8>, Mutter> {
+    pub fn server_certificate_verify_hash(&self, hs_ctx: &[u8]) -> Result<Vec<u8>, Error> {
         self.cipher_suite.derive_certificate_verify_hash(hs_ctx)
     }
 
-    pub fn client_finished_mac(&self, hs_ctx: &[u8]) -> Result<Vec<u8>, Mutter> {
+    pub fn client_finished_mac(&self, hs_ctx: &[u8]) -> Result<Vec<u8>, Error> {
         self.cipher_suite
             .derive_finished_mac(&self.cl_hs_traffic_secret, hs_ctx)
     }
@@ -629,11 +629,11 @@ impl AppTrafficSecrets {
         }
     }
 
-    pub fn decrypt_next(&mut self, ad: &[u8], out: &mut Vec<u8>) -> Result<(), Mutter> {
+    pub fn decrypt_next(&mut self, ad: &[u8], out: &mut Vec<u8>) -> Result<(), Error> {
         self.serv_cipher.decrypt_next(ad, out)
     }
 
-    pub fn encrypt_next(&mut self, ad: &[u8], out: &mut Vec<u8>) -> Result<(), Mutter> {
+    pub fn encrypt_next(&mut self, ad: &[u8], out: &mut Vec<u8>) -> Result<(), Error> {
         self.cl_cipher.encrypt_next(ad, out)
     }
 }
@@ -645,16 +645,16 @@ fn hkdf_sha256_extract(salt: &[u8], ikm: &[u8]) -> Vec<u8> {
     prk.to_vec()
 }
 
-fn hmac_sha256(key: &[u8], data: &[u8]) -> Result<Vec<u8>, Mutter> {
+fn hmac_sha256(key: &[u8], data: &[u8]) -> Result<Vec<u8>, Error> {
     let mut hmac_sha256 =
-        <Hmac<Sha256> as KeyInit>::new_from_slice(key).map_err(|_| Mutter::HmacBadKeyLen)?;
+        <Hmac<Sha256> as KeyInit>::new_from_slice(key).map_err(|_| Error::HmacBadKeyLen)?;
     hmac_sha256.update(data);
     Ok(hmac_sha256.finalize().into_bytes().to_vec())
 }
 
-fn hmac_sha384(key: &[u8], data: &[u8]) -> Result<Vec<u8>, Mutter> {
+fn hmac_sha384(key: &[u8], data: &[u8]) -> Result<Vec<u8>, Error> {
     let mut hmac_sha384 =
-        <Hmac<Sha384> as KeyInit>::new_from_slice(key).map_err(|_| Mutter::HmacBadKeyLen)?;
+        <Hmac<Sha384> as KeyInit>::new_from_slice(key).map_err(|_| Error::HmacBadKeyLen)?;
     hmac_sha384.update(data);
     Ok(hmac_sha384.finalize().into_bytes().to_vec())
 }

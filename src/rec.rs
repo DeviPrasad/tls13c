@@ -1,7 +1,7 @@
 use crate::def::LegacyTlsVersion::TlsLegacyVersion03003;
 use crate::def::{self, LegacyRecordVersion, ProtoColVersion, RecordContentType};
 use crate::deser::DeSer;
-use crate::err::Mutter;
+use crate::err::Error;
 use crate::session::KeyExchangeSession;
 use crate::stream::TlsStream;
 
@@ -51,11 +51,11 @@ pub fn try_fetch<S: RecordFetcher>(
 impl Tls13Record {
     pub const SIZE: usize = 5;
 
-    pub fn deserialize(deser: &mut DeSer) -> Result<Tls13Record, Mutter> {
+    pub fn deserialize(deser: &mut DeSer) -> Result<Tls13Record, Error> {
         Self::peek(deser).map(|rec| (deser.seek(5), rec).1)
     }
 
-    pub fn peek(deser: &DeSer) -> Result<Tls13Record, Mutter> {
+    pub fn peek(deser: &DeSer) -> Result<Tls13Record, Error> {
         if deser.have(deser.cursor() + 5) {
             let ct = RecordContentType::try_from(deser.peek_u8())?;
             let ver = deser.peek_u16_at(1);
@@ -67,19 +67,19 @@ impl Tls13Record {
                     len,
                 })
             } else {
-                Mutter::NotTls13Record.into()
+                Error::NotTls13Record.into()
             }
         } else {
-            Mutter::DeserializationBufferInsufficient.into()
+            Error::DeserializationBufferInsufficient.into()
         }
     }
 
-    pub fn read_handshake(deser: &mut DeSer) -> Result<Tls13Record, Mutter> {
+    pub fn read_handshake(deser: &mut DeSer) -> Result<Tls13Record, Error> {
         let rec = Self::deserialize(deser)?;
         if rec.rct == RecordContentType::Handshake {
             Ok(rec)
         } else {
-            Mutter::NotHandshakeMessage.into()
+            Error::NotHandshakeMessage.into()
         }
     }
 }
@@ -97,7 +97,7 @@ impl RecordFetcher for Tls13Record {
                     ))
                 }
             }
-            Err(Mutter::DeserializationBufferInsufficient) => {
+            Err(Error::DeserializationBufferInsufficient) => {
                 Ok((false, Tls13Record::SIZE - deser.available()))
             }
             _ => Err(()),

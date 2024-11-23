@@ -2,7 +2,7 @@ use std::mem::size_of;
 
 use crate::def::{to_u16, u16_to_u8_pair, ExtensionTypeCode, SignatureScheme, SupportedGroup};
 use crate::deser::DeSer;
-use crate::err::Mutter;
+use crate::err::Error;
 
 #[derive(Clone, Debug)]
 pub struct ClientExtensions(
@@ -18,25 +18,25 @@ impl
         &str,
         &[SignatureScheme],
         &[SupportedGroup],
-        &[ServerSessionPublicKey],
+        &[ServerPublicKey],
     )> for ClientExtensions
 {
-    type Error = Mutter;
+    type Error = Error;
 
     fn try_from(
         (server_name, schemes, groups, key_shares): (
             &str,
             &[SignatureScheme],
             &[SupportedGroup],
-            &[ServerSessionPublicKey],
+            &[ServerPublicKey],
         ),
-    ) -> Result<Self, Mutter> {
+    ) -> Result<Self, Error> {
         if server_name.is_empty()
             || schemes.is_empty()
             || groups.is_empty()
             || key_shares.is_empty()
         {
-            return Err(Mutter::BadInput);
+            return Err(Error::BadInput);
         }
         Ok(Self(
             ServerNameExt::try_from(server_name)?,
@@ -98,12 +98,12 @@ pub struct ServerNameExt {
 }
 
 impl TryFrom<&str> for ServerNameExt {
-    type Error = Mutter;
+    type Error = Error;
     fn try_from(name: &str) -> Result<Self, Self::Error> {
         if !name.is_empty() && name.len() < 64 {
             Ok(ServerNameExt::new(name))
         } else {
-            Err(Mutter::InvalidExtensionData)
+            Err(Error::InvalidExtensionData)
         }
     }
 }
@@ -137,29 +137,29 @@ impl ServerNameExt {
     }
 
     #[allow(unused)]
-    pub fn deserialize(ctx: PeerType, bytes: &[u8], i: usize) -> Result<(Self, usize), Mutter> {
+    pub fn deserialize(ctx: PeerType, bytes: &[u8], i: usize) -> Result<(Self, usize), Error> {
         let inp_size = bytes.len();
         if ctx != PeerType::Client || inp_size < 9 {
-            Err(Mutter::BadInput)
+            Err(Error::BadInput)
         } else {
             if (bytes[i], bytes[i + 1]) != (0, 0) {
-                return Err(Mutter::ExtensionType);
+                return Err(Error::ExtensionType);
             }
             let ext_data_len = to_u16(bytes[i + 2], bytes[i + 3]);
             let list_len = to_u16(bytes[i + 4], bytes[i + 5]); // list of len = 1
             if ext_data_len != list_len + 2 {
-                return Err(Mutter::ExtensionLen);
+                return Err(Error::ExtensionLen);
             }
             if bytes[i + 6] != 0 {
                 // indicates DNS hostname
-                return Err(Mutter::InvalidExtensionData);
+                return Err(Error::InvalidExtensionData);
             }
             let name_len = to_u16(bytes[i + 7], bytes[i + 8]) as usize;
             if (9 + name_len) > inp_size {
-                return Err(Mutter::BadInput);
+                return Err(Error::BadInput);
             }
             let s: &str = core::str::from_utf8(&bytes[9..9 + name_len])
-                .map_err(|_| Mutter::InvalidExtensionData)?;
+                .map_err(|_| Error::InvalidExtensionData)?;
             Ok((Self::new(s), 9 + name_len))
         }
     }
@@ -194,7 +194,7 @@ impl SupportedVersionExt {
     }
 
     // supported versions extension type = 0x002b.
-    pub fn deserialize(ctx: PeerType, deser: &mut DeSer) -> Result<(Self, usize), Mutter> {
+    pub fn deserialize(ctx: PeerType, deser: &mut DeSer) -> Result<(Self, usize), Error> {
         if ExtensionTypeCode::SupportedVersions == ExtensionTypeCode::try_from(deser.ru16())? {
             let ext_data_len = deser.ru16() as usize;
             assert_eq!(ext_data_len, 2);
@@ -202,10 +202,10 @@ impl SupportedVersionExt {
                 Ok((Self::new(ctx), ext_data_len + 4))
             } else {
                 log::error!("Error - SupportedVersionExt::deserialize");
-                Mutter::InvalidExtensionData.into()
+                Error::InvalidExtensionData.into()
             }
         } else {
-            Mutter::UnexpectedExtension.into()
+            Error::UnexpectedExtension.into()
         }
     }
 
@@ -225,26 +225,26 @@ impl SupportedVersionExt {
 }
 
 #[derive(Clone, Debug)]
-pub struct ServerSessionPublicKey {
+pub struct ServerPublicKey {
     pub(crate) group: SupportedGroup,
     pub(crate) public_key: Vec<u8>, // may be empty when an extension is deserialized
 }
 
 #[allow(dead_code)]
-impl TryFrom<(u16, &[u8])> for ServerSessionPublicKey {
-    type Error = Mutter;
+impl TryFrom<(u16, &[u8])> for ServerPublicKey {
+    type Error = Error;
 
-    fn try_from((group_code, key): (u16, &[u8])) -> Result<Self, Mutter> {
+    fn try_from((group_code, key): (u16, &[u8])) -> Result<Self, Error> {
         let group: SupportedGroup = group_code.try_into()?;
         if group.key_size() == key.len() || key.is_empty() {
             Ok(Self::new(group, key.into()))
         } else {
-            Mutter::BadInput.into()
+            Error::BadInput.into()
         }
     }
 }
 
-impl ServerSessionPublicKey {
+impl ServerPublicKey {
     fn new(group: SupportedGroup, public_key: Vec<u8>) -> Self {
         Self { group, public_key }
     }
@@ -255,6 +255,12 @@ impl ServerSessionPublicKey {
 
     pub fn secp256r1(pub_key: &[u8]) -> Self {
         Self::new(SupportedGroup::Secp256r1, pub_key.to_vec())
+    }
+
+    pub fn matches(&self, other: &ServerPublicKey) -> bool {
+        self.group == other.group
+            && (self.group == SupportedGroup::X25519
+            || self.group == SupportedGroup::Secp256r1)
     }
 
     // 2 bytes for the SupportedGroup id.
@@ -286,7 +292,7 @@ impl ServerSessionPublicKey {
         }
     }
 
-    pub fn deserialize(deser: &mut DeSer) -> Result<(Self, usize), Mutter> {
+    pub fn deserialize(deser: &mut DeSer) -> Result<(Self, usize), Error> {
         // an extension may just indicate the key type it supports.
         // the extension may not include the key if ClientHello does not support the group.
         // Therefore, key share extension may use only need 6 bytes.
@@ -301,46 +307,46 @@ impl ServerSessionPublicKey {
                     if key_len == 0 || key_len == 32 {
                         let key = deser.slice(key_len.into());
                         let key_ext =
-                            Self::x25519(key.try_into().map_err(|_| Mutter::X25519KeyLenBad)?);
+                            Self::x25519(key.try_into().map_err(|_| Error::X25519KeyLenBad)?);
                         Ok((key_ext, ext_data_len as usize + 4))
                     } else {
-                        Mutter::X25519KeyLenBad.into()
+                        Error::X25519KeyLenBad.into()
                     }
                 } else if curve == SupportedGroup::Secp256r1.into() {
                     let key = deser.slice(key_len.into());
                     let key_ext = Self::secp256r1(key);
                     Ok((key_ext, ext_data_len as usize + 4))
                 } else {
-                    Mutter::UnsupportedGroup.into()
+                    Error::UnsupportedGroup.into()
                 }
             } else {
-                Mutter::InvalidExtensionData.into()
+                Error::InvalidExtensionData.into()
             }
         } else {
-            Mutter::UnsupportedExtension.into()
+            Error::UnsupportedExtension.into()
         }
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct KeyShareExtensions(PeerType, Vec<ServerSessionPublicKey>);
+pub struct KeyShareExtensions(PeerType, Vec<ServerPublicKey>);
 
-impl TryFrom<(PeerType, &[ServerSessionPublicKey])> for KeyShareExtensions {
-    type Error = Mutter;
+impl TryFrom<(PeerType, &[ServerPublicKey])> for KeyShareExtensions {
+    type Error = Error;
 
-    fn try_from((ctx, key_shares): (PeerType, &[ServerSessionPublicKey])) -> Result<Self, Mutter> {
+    fn try_from((ctx, key_shares): (PeerType, &[ServerPublicKey])) -> Result<Self, Error> {
         if ctx == PeerType::Server && key_shares.len() != 1
             || ctx == PeerType::Client && key_shares.is_empty()
         {
-            Mutter::BadInput.into()
+            Error::BadInput.into()
         } else {
             let mut dup = [true, false, false];
             for ksx in key_shares {
                 let sln = SupportedGroup::try_from(ksx.group as u16)?.sln();
                 if sln >= dup.len() {
-                    return Mutter::UnsupportedGroup.into();
+                    return Error::UnsupportedGroup.into();
                 } else if dup[sln] {
-                    return Err(Mutter::DuplicateSupportedGroup);
+                    return Err(Error::DuplicateSupportedGroup);
                 } else {
                     dup[sln] = true;
                 }
@@ -351,7 +357,7 @@ impl TryFrom<(PeerType, &[ServerSessionPublicKey])> for KeyShareExtensions {
 }
 
 impl KeyShareExtensions {
-    fn new(ctx: PeerType, ext: Vec<ServerSessionPublicKey>) -> Self {
+    fn new(ctx: PeerType, ext: Vec<ServerPublicKey>) -> Self {
         Self(ctx, ext)
     }
 
@@ -359,7 +365,7 @@ impl KeyShareExtensions {
         self.0 == PeerType::Client
     }
 
-    pub fn extensions(&self) -> &[ServerSessionPublicKey] {
+    pub fn extensions(&self) -> &[ServerPublicKey] {
         &self.1
     }
 
@@ -402,9 +408,9 @@ impl KeyShareExtensions {
 pub struct SupportedGroupExt(SupportedGroup);
 
 impl TryFrom<u16> for SupportedGroupExt {
-    type Error = Mutter;
+    type Error = Error;
 
-    fn try_from(val: u16) -> Result<Self, Mutter> {
+    fn try_from(val: u16) -> Result<Self, Error> {
         Ok(Self(SupportedGroup::try_from(val)?))
     }
 }
@@ -432,19 +438,19 @@ impl SupportedGroupExt {
 pub struct SupportedGroupExtensions(Vec<SupportedGroupExt>);
 
 impl TryFrom<&[SupportedGroup]> for SupportedGroupExtensions {
-    type Error = Mutter;
+    type Error = Error;
 
-    fn try_from(groups: &[SupportedGroup]) -> Result<SupportedGroupExtensions, Mutter> {
+    fn try_from(groups: &[SupportedGroup]) -> Result<SupportedGroupExtensions, Error> {
         if !groups.is_empty() {
             let mut list_grp_ext = Vec::new();
             let mut groups_dup: Vec<bool> = vec![true, false, false];
             for g in groups.iter() {
                 let i = g.sln();
                 if i >= groups_dup.len() {
-                    return Mutter::UnsupportedGroup.into();
+                    return Error::UnsupportedGroup.into();
                 } else if groups_dup[i] {
                     // this is a duplicate entry
-                    return Err(Mutter::DuplicateSupportedGroup);
+                    return Err(Error::DuplicateSupportedGroup);
                 } else {
                     groups_dup[i] = true;
                     list_grp_ext.push(SupportedGroupExt::new(*g));
@@ -452,7 +458,7 @@ impl TryFrom<&[SupportedGroup]> for SupportedGroupExtensions {
             }
             Ok(SupportedGroupExtensions(list_grp_ext))
         } else {
-            Err(Mutter::SupportedGroupLen)
+            Err(Error::SupportedGroupLen)
         }
     }
 }
@@ -505,9 +511,9 @@ impl SigAlgExt {
     }
 
     #[allow(dead_code)]
-    pub fn deserialize(ctx: PeerType, bytes: &[u8], i: usize) -> Result<(Self, usize), Mutter> {
+    pub fn deserialize(ctx: PeerType, bytes: &[u8], i: usize) -> Result<(Self, usize), Error> {
         if ctx != PeerType::Client || i + Self::EXT_SIZE > bytes.len() {
-            Err(Mutter::BadInput)
+            Err(Error::BadInput)
         } else {
             let scheme = SignatureScheme::try_from(to_u16(bytes[i], bytes[i + 1]))?;
             Ok((Self::new(scheme), 2))
@@ -528,19 +534,19 @@ impl SigAlgExt {
 pub struct SignatureSchemeExtensions(Vec<SigAlgExt>);
 
 impl TryFrom<&[SignatureScheme]> for SignatureSchemeExtensions {
-    type Error = Mutter;
+    type Error = Error;
 
-    fn try_from(schemes: &[SignatureScheme]) -> Result<Self, Mutter> {
+    fn try_from(schemes: &[SignatureScheme]) -> Result<Self, Error> {
         if !schemes.is_empty() {
             let mut list_sig_alg_ext = Vec::new();
             let mut schemes_dup: Vec<bool> = vec![true, false, false, false];
             for s in schemes.iter() {
                 let i = s.sln();
                 if i >= schemes_dup.len() {
-                    return Mutter::UnsupportedSignatureScheme.into();
+                    return Error::UnsupportedSignatureScheme.into();
                 } else if schemes_dup[i] {
                     // this is a duplicate entry
-                    return Mutter::SignatureSchemeDuplicate.into();
+                    return Error::SignatureSchemeDuplicate.into();
                 } else {
                     schemes_dup[i] = true;
                     list_sig_alg_ext.push(SigAlgExt::new(*s));
@@ -548,7 +554,7 @@ impl TryFrom<&[SignatureScheme]> for SignatureSchemeExtensions {
             }
             Ok(SignatureSchemeExtensions(list_sig_alg_ext))
         } else {
-            Err(Mutter::CipherSuiteLen)
+            Err(Error::CipherSuiteLen)
         }
     }
 }
@@ -584,33 +590,33 @@ impl SignatureSchemeExtensions {
 }
 
 #[derive(Debug)]
-pub struct ServerExtensions(pub(crate) ServerSessionPublicKey);
+pub struct ServerExtensions(pub(crate) ServerPublicKey);
 
-impl TryFrom<Option<ServerSessionPublicKey>> for ServerExtensions {
-    type Error = Mutter;
+impl TryFrom<Option<ServerPublicKey>> for ServerExtensions {
+    type Error = Error;
 
-    fn try_from(val: Option<ServerSessionPublicKey>) -> Result<Self, Mutter> {
+    fn try_from(val: Option<ServerPublicKey>) -> Result<Self, Error> {
         if let Some(v) = val {
             Ok(Self(v))
         } else {
-            Mutter::BadInput.into()
+            Error::BadInput.into()
         }
     }
 }
 
 impl ServerExtensions {
     // 'bytes' holds a list of extensions. The first two bytes encode the size of the list,
-    pub fn deserialize(deser: &mut DeSer) -> Result<(ServerExtensions, usize), Mutter> {
+    pub fn deserialize(deser: &mut DeSer) -> Result<(ServerExtensions, usize), Error> {
         if !deser.have(size_of::<u16>()) {
-            return Err(Mutter::BadInput);
+            return Err(Error::BadInput);
         }
         // extensions length: u16
         let ext_list_size: usize = deser.ru16() as usize;
         if !deser.have(ext_list_size) {
-            return Err(Mutter::ExtensionLen);
+            return Err(Error::ExtensionLen);
         }
         let mut copied: usize = 0;
-        let mut key_share: Option<ServerSessionPublicKey> = None;
+        let mut key_share: Option<ServerPublicKey> = None;
         // list of extensions
         while copied < ext_list_size {
             let ext_type_code = ExtensionTypeCode::try_from(deser.peek_u16())?;
@@ -621,11 +627,11 @@ impl ServerExtensions {
                     size
                 }
                 ExtensionTypeCode::KeyShare => {
-                    let (key_share_ext, size) = ServerSessionPublicKey::deserialize(deser)?;
+                    let (key_share_ext, size) = ServerPublicKey::deserialize(deser)?;
                     key_share = Some(key_share_ext);
                     size
                 }
-                _ => return Mutter::UnsupportedExtension.into(),
+                _ => return Error::UnsupportedExtension.into(),
             };
             assert!(copied <= ext_list_size);
         }
@@ -639,12 +645,12 @@ impl ServerExtensions {
 mod extension_test {
     use crate::def::SupportedGroup;
     use crate::ecdhe::P256KeyPair;
-    use crate::ext::{KeyShareExtensions, PeerType, ServerSessionPublicKey};
+    use crate::ext::{KeyShareExtensions, PeerType, ServerPublicKey};
 
     #[test]
     fn test_one_key_share() {
         let x25519_key_ext =
-            ServerSessionPublicKey::try_from((SupportedGroup::X25519 as u16, [0u8; 32].as_slice()))
+            ServerPublicKey::try_from((SupportedGroup::X25519 as u16, [0u8; 32].as_slice()))
                 .unwrap();
         let key_shares: KeyShareExtensions = (PeerType::Client, [x25519_key_ext].as_slice())
             .try_into()
@@ -660,11 +666,11 @@ mod extension_test {
     #[test]
     fn test_two_key_shares() {
         let x25519_key_ext =
-            ServerSessionPublicKey::try_from((SupportedGroup::X25519 as u16, [7u8; 32].as_slice()))
+            ServerPublicKey::try_from((SupportedGroup::X25519 as u16, [7u8; 32].as_slice()))
                 .unwrap();
         let p256_key_pair = P256KeyPair::default();
         let p256_key_share =
-            ServerSessionPublicKey::secp256r1(p256_key_pair.public_bytes().as_bytes());
+            ServerPublicKey::secp256r1(p256_key_pair.public_bytes().as_bytes());
 
         let key_shares: KeyShareExtensions = (
             PeerType::Client,

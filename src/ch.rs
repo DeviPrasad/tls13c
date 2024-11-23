@@ -1,16 +1,16 @@
 use crate::def::{
     to_u16, CipherSuiteId, CipherSuites, HandshakeType, ProtoColVersion, Random, RecordContentType,
 };
-use crate::err::Mutter;
-use crate::ext::{ClientExtensions, ServerSessionPublicKey};
+use crate::err::Error;
+use crate::ext::{ClientExtensions, ServerPublicKey};
 
 struct CompressionMethods();
 
 #[allow(dead_code)]
 impl CompressionMethods {
-    pub fn deserialize(bytes: &[u8]) -> Result<usize, Mutter> {
+    pub fn deserialize(bytes: &[u8]) -> Result<usize, Error> {
         if bytes.len() < 2 || !(bytes[0] == 1 && bytes[1] == 0) {
-            return Err(Mutter::CompressionMethods);
+            return Err(Error::CompressionMethods);
         }
         Ok(2)
     }
@@ -66,9 +66,9 @@ impl ClientHelloMsg {
             self.extensions.size()
     }
 
-    pub fn serialize(&self, bytes: &mut [u8]) -> Result<usize, Mutter> {
+    pub fn serialize(&self, bytes: &mut [u8]) -> Result<usize, Error> {
         if self.size() > bytes.len() {
-            return Err(Mutter::SerializationBufferInsufficient);
+            return Err(Error::SerializationBufferInsufficient);
         }
 
         // see ClientHello message layout diagram in dicp book to understand why
@@ -123,14 +123,14 @@ impl ClientHelloMsg {
         random: Random,
         ciphers: Vec<CipherSuiteId>,
         extensions: ClientExtensions,
-    ) -> Result<Self, Mutter> {
+    ) -> Result<Self, Error> {
         // self.size() shows that a client hello message needs 50+ bytes of data.
         // we subtract five bytes of the record header to reach the first byte of the handshake message.
         // That's how we arrive at the magic number 45 below.
         let ch_frag_len = 45 + ciphers.len() * 2 + extensions.size();
 
         if ch_frag_len >= (1 << 14) + 3 {
-            return Err(Mutter::TooBig);
+            return Err(Error::TooBig);
         }
 
         let res = Ok(ClientHelloMsg {
@@ -153,7 +153,7 @@ impl ClientHelloMsg {
         res
     }
 
-    pub fn key_shares(&self) -> &[ServerSessionPublicKey] {
+    pub fn key_shares(&self) -> &[ServerPublicKey] {
         self.extensions.key_share_extensions().extensions()
     }
 }

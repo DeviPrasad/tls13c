@@ -1,4 +1,4 @@
-use crate::err::Mutter;
+use crate::err::Error;
 
 pub type ProtoColVersion = u16;
 
@@ -28,29 +28,29 @@ pub type Random = [u8; 32];
 pub enum CipherSuiteId {
     TlsAes128GcmSha256,
     TlsAes256GcmSha384,
-    TlsChacha20Poly1305Sha256,
+    TlsChaCha20Poly1305Sha256,
     TlsAes128CcmSha256,
     TlsAes128Ccm8Sha256,
 }
 
 impl TryFrom<u16> for CipherSuiteId {
-    type Error = Mutter;
+    type Error = Error;
     fn try_from(val: u16) -> Result<Self, Self::Error> {
         Self::try_from(u16_to_u8_pair(val))
     }
 }
 
 impl TryFrom<(u8, u8)> for CipherSuiteId {
-    type Error = Mutter;
+    type Error = Error;
 
     fn try_from(value: (u8, u8)) -> Result<Self, Self::Error> {
         match value {
             (0x13, 0x01) => Ok(CipherSuiteId::TlsAes128GcmSha256),
             (0x13, 0x02) => Ok(CipherSuiteId::TlsAes256GcmSha384),
-            (0x13, 0x03) => Ok(CipherSuiteId::TlsChacha20Poly1305Sha256),
+            (0x13, 0x03) => Ok(CipherSuiteId::TlsChaCha20Poly1305Sha256),
             (0x13, 0x04) => Ok(CipherSuiteId::TlsAes128CcmSha256),
             (0x13, 0x05) => Ok(CipherSuiteId::TlsAes128Ccm8Sha256),
-            _ => Err(Mutter::CipherUnsupported),
+            _ => Err(Error::CipherUnsupported),
         }
     }
 }
@@ -64,7 +64,7 @@ impl CipherSuiteId {
         match self {
             CipherSuiteId::TlsAes128GcmSha256 => (0x13, 0x01),
             CipherSuiteId::TlsAes256GcmSha384 => (0x13, 0x02),
-            CipherSuiteId::TlsChacha20Poly1305Sha256 => (0x13, 0x03),
+            CipherSuiteId::TlsChaCha20Poly1305Sha256 => (0x13, 0x03),
             CipherSuiteId::TlsAes128CcmSha256 => (0x13, 0x04),
             CipherSuiteId::TlsAes128Ccm8Sha256 => (0x13, 0x05),
         }
@@ -76,34 +76,34 @@ pub struct CipherSuites(Vec<CipherSuiteId>);
 
 #[allow(dead_code)]
 impl TryFrom<Vec<CipherSuiteId>> for CipherSuites {
-    type Error = Mutter;
+    type Error = Error;
 
-    fn try_from(cipher_suites: Vec<CipherSuiteId>) -> Result<Self, Mutter> {
+    fn try_from(cipher_suites: Vec<CipherSuiteId>) -> Result<Self, Error> {
         if !cipher_suites.is_empty() {
             let mut cipher_suite_dup: Vec<bool> = vec![true, false, false, false, false, false];
             for cs in cipher_suites.iter() {
                 let (_, cl) = cs.code();
                 if cipher_suite_dup[cl as usize] {
-                    return Err(Mutter::CipherDuplicate);
+                    return Err(Error::CipherDuplicate);
                 } else {
                     cipher_suite_dup[cl as usize] = true;
                 }
             }
             Ok(CipherSuites(cipher_suites))
         } else {
-            Err(Mutter::CipherSuiteLen)
+            Err(Error::CipherSuiteLen)
         }
     }
 }
 
 #[allow(dead_code)]
 impl CipherSuites {
-    pub fn deserialize(bytes: &[u8]) -> Result<(CipherSuites, usize), Mutter> {
+    pub fn deserialize(bytes: &[u8]) -> Result<(CipherSuites, usize), Error> {
         let mut i: usize = 0;
         // cipher suites - len followed by identifiers; sequence of byte-pairs.
         let cipher_suite_len: usize = ((bytes[i] as usize) << 8) | bytes[i + 1] as usize;
         if (cipher_suite_len & 1 == 1) || !(2..=10).contains(&cipher_suite_len) {
-            return Err(Mutter::CipherSuiteLen);
+            return Err(Error::CipherSuiteLen);
         }
         i += 2;
         let mut cipher_suites: Vec<CipherSuiteId> = vec![];
@@ -114,7 +114,7 @@ impl CipherSuites {
             let cs = CipherSuiteId::try_from((cm, cl))?;
             log::info!("\tcipher_suite: {cs:#?}");
             if cipher_suite_dup[cl as usize] {
-                return Err(Mutter::CipherDuplicate);
+                return Err(Error::CipherDuplicate);
             } else {
                 cipher_suite_dup[cl as usize] = true;
                 cipher_suites.push(cs);
@@ -153,15 +153,15 @@ pub enum RecordContentType {
 }
 
 impl TryFrom<u8> for RecordContentType {
-    type Error = Mutter;
+    type Error = Error;
 
-    fn try_from(val: u8) -> Result<Self, Mutter> {
+    fn try_from(val: u8) -> Result<Self, Error> {
         Ok(match val {
             20 => Self::ChangeCipherSpec,
             21 => Self::Alert,
             22 => Self::Handshake,
             23 => Self::ApplicationData,
-            _ => return Err(Mutter::InvalidRecordContentType),
+            _ => return Err(Error::InvalidRecordContentType),
         })
     }
 }
@@ -243,17 +243,17 @@ impl Into<u16> for ExtensionTypeCode {
 }
 
 impl TryFrom<u16> for ExtensionTypeCode {
-    type Error = Mutter;
+    type Error = Error;
 
-    fn try_from(val: u16) -> Result<Self, Mutter> {
+    fn try_from(val: u16) -> Result<Self, Error> {
         Self::try_from(u16_to_u8_pair(val))
     }
 }
 
 impl TryFrom<(u8, u8)> for ExtensionTypeCode {
-    type Error = Mutter;
+    type Error = Error;
 
-    fn try_from((u, v): (u8, u8)) -> Result<Self, Mutter> {
+    fn try_from((u, v): (u8, u8)) -> Result<Self, Error> {
         match (u, v) {
             (0, 0) => Ok(Self::ServerName),
             (0, 10) => Ok(Self::SupportedGroups),
@@ -271,7 +271,7 @@ impl TryFrom<(u8, u8)> for ExtensionTypeCode {
             (0, 51) => Ok(Self::KeyShare),
             _ => {
                 log::error!("ExtensionType - error. Unsupported type ({},{})", u, v);
-                Err(Mutter::UnsupportedExtension)
+                Err(Error::UnsupportedExtension)
             }
         }
     }
@@ -305,13 +305,13 @@ impl Into<u16> for SupportedGroup {
 }
 
 impl TryFrom<u16> for SupportedGroup {
-    type Error = Mutter;
+    type Error = Error;
 
     fn try_from(val: u16) -> Result<Self, Self::Error> {
         match val {
             0x0017 => Ok(Self::Secp256r1),
             0x001D => Ok(Self::X25519),
-            _ => Err(Mutter::UnsupportedGroup),
+            _ => Err(Error::UnsupportedGroup),
         }
     }
 }
@@ -351,14 +351,14 @@ pub enum SignatureScheme {
 }
 
 impl TryFrom<u16> for SignatureScheme {
-    type Error = Mutter;
+    type Error = Error;
 
     fn try_from(value: u16) -> Result<Self, Self::Error> {
         Ok(match value {
             0x0403 => SignatureScheme::EcdsaSecp256r1Sha256,
             0x0804 => SignatureScheme::RsaPssRsaeSha256,
             0x0807 => SignatureScheme::Ed25519,
-            _ => return Err(Mutter::UnsupportedSignatureScheme),
+            _ => return Err(Error::UnsupportedSignatureScheme),
         })
     }
 }
@@ -406,7 +406,7 @@ pub enum AlertDesc {
 }
 
 impl TryFrom<u8> for AlertDesc {
-    type Error = Mutter;
+    type Error = Error;
 
     fn try_from(desc: u8) -> Result<Self, Self::Error> {
         match desc {
@@ -419,7 +419,7 @@ impl TryFrom<u8> for AlertDesc {
             80 => Ok(AlertDesc::InternalError),
             109 => Ok(AlertDesc::MissingExtension),
             110 => Ok(AlertDesc::UnsupportedExtension),
-            _ => Err(Mutter::UnknownAlertDesc),
+            _ => Err(Error::UnknownAlertDesc),
         }
     }
 }

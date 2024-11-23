@@ -1,16 +1,16 @@
 use crate::cfg::PeerSessionConfig;
 use crate::ch::ClientHelloMsg;
 use crate::ecdhe::DHSession;
-use crate::err::Mutter;
+use crate::err::Error;
 use crate::ext::ClientExtensions;
 use crate::session::{AppSession, AuthenticationSession, KeyExchangeSession, MessageAuthenticator};
 use crate::stream::TlsConnection;
 use crate::{deser, rand};
 
-pub fn client_main() -> Result<(), Mutter> {
-    Ok(&PeerSessionConfig::stripe())
+pub fn client_main() -> Result<(), Error> {
+    Ok(&PeerSessionConfig::github())
         .and_then(|peer| Ok((peer, TlsConnection::with_peer(peer)?)))
-        .and_then(|(peer, tls_conn)| Ok((peer, exchange(peer, tls_conn)?)))
+        .and_then(|(peer, tls_conn)| Ok((peer, exchange_key(peer, tls_conn)?)))
         .and_then(|(peer, auth_session)| Ok((peer, authenticate(auth_session)?)))
         .and_then(|(peer, mut app_session)| {
             run_client(&peer.path, &peer.id, &mut app_session)?;
@@ -19,50 +19,57 @@ pub fn client_main() -> Result<(), Mutter> {
         })
 }
 
-pub fn exchange(
+pub fn exchange_key(
     peer: &PeerSessionConfig,
     tls_conn: TlsConnection,
-) -> Result<AuthenticationSession, Mutter> {
+) -> Result<AuthenticationSession, Error> {
     log::info!("TLS 1.3 peer: ({})", peer.tls_addr);
 
     let mut key_exchange_session = KeyExchangeSession::new(tls_conn.stream);
     let mut dh = DHSession::new();
 
-    let ch = {
-        let extensions_data = ClientExtensions::try_from((
-            peer.id.as_str(),
-            peer.sig_algs.as_slice(),
-            peer.dh_groups.as_slice(),
-            // [p256_key_share].as_slice()
-            // [x25519_key_share].as_slice()
-            // [p256_key_share, x25519_key_share].as_slice()
-            [dh.x25519_key_share(), dh.p256_key_share()].as_slice(),
-        ))?;
-        let ch = ClientHelloMsg::try_from(
-            rand::CryptoRandom::<32>::bytes(),
-            peer.cipher_suites.to_vec(),
-            extensions_data.clone(),
-        )?;
-        log::info!("ClientHello sent");
-        ch
-    };
-
-    key_exchange_session.client_hello(&ch)?;
-    let sh = key_exchange_session.read_server_hello()?;
-
+    // Send client hello
+    let ch = build_client_hello(peer, &mut dh)?;
+    key_exchange_session.send_client_hello(&ch)?;
+    log::info!("ClientHello sent");
+    // Receive server hello
+    let sh = key_exchange_session.receive_server_hello()?;
+    // Receive change cipher spec message
     key_exchange_session.read_optional_change_cipher_spec()?;
 
-    let serv_key_share = sh.key_share(ch.key_shares()).expect("public key for DH");
+    // find server's public key that matches one of the groups supported by the client
+    let server_pub_key = sh.get_matching_server_public_key(ch.key_shares())?;
 
-    key_exchange_session.authentication_session(
+    key_exchange_session.to_authentication_session(
         sh.cipher_suite_id,
-        serv_key_share,
+        server_pub_key,
         dh,
         peer.sig_algs.clone(),
     )
 }
 
-pub fn authenticate(mut auth_session: AuthenticationSession) -> Result<AppSession, Mutter> {
+fn build_client_hello(peer: &PeerSessionConfig, dh: &mut DHSession) -> Result<ClientHelloMsg, Error> {
+    let extensions_data = build_extensions(peer, dh)?;
+    ClientHelloMsg::try_from(
+        rand::CryptoRandom::<32>::bytes(),
+        peer.cipher_suites.to_vec(),
+        extensions_data.clone(),
+    )
+}
+
+fn build_extensions(peer: &PeerSessionConfig, dh: &mut DHSession) -> Result<ClientExtensions, Error> {
+    ClientExtensions::try_from((
+        peer.id.as_str(),
+        peer.sig_algs.as_slice(),
+        peer.dh_groups.as_slice(),
+        // [p256_key_share].as_slice()
+        // [x25519_key_share].as_slice()
+        // [p256_key_share, x25519_key_share].as_slice()
+        [dh.x25519_key_share(), dh.p256_key_share()].as_slice(),
+    ))
+}
+
+pub fn authenticate(mut auth_session: AuthenticationSession) -> Result<AppSession, Error> {
     MessageAuthenticator::authenticate(&mut auth_session)?;
 
     // send client Finish message
@@ -72,7 +79,7 @@ pub fn authenticate(mut auth_session: AuthenticationSession) -> Result<AppSessio
     auth_session.app_session()
 }
 
-fn http_get(path: &str, host: &str, session: &mut AppSession) -> Result<usize, Mutter> {
+fn http_get(path: &str, host: &str, session: &mut AppSession) -> Result<usize, Error> {
     // send http get request
     let http_req_plaintext = format!(
         "GET /{} HTTP/1.1\r\nHost: {}\r\nAccept: */*\r\nUser-Agent: curl/8.6.0\r\n\r\n",
@@ -81,11 +88,11 @@ fn http_get(path: &str, host: &str, session: &mut AppSession) -> Result<usize, M
     session.send(http_req_plaintext.as_bytes())
 }
 
-fn read_server_resp(session: &mut AppSession, response: &mut Vec<u8>) -> Result<usize, Mutter> {
+fn read_server_resp(session: &mut AppSession, response: &mut Vec<u8>) -> Result<usize, Error> {
     session.read(response)
 }
 
-fn run_client(path: &str, host: &str, session: &mut AppSession) -> Result<(), Mutter> {
+fn run_client(path: &str, host: &str, session: &mut AppSession) -> Result<(), Error> {
     let mut resp = vec![];
 
     // Session tickets are optional. Not all servers offer them. For example, x.com doesn't.
@@ -134,7 +141,7 @@ fn run_client(path: &str, host: &str, session: &mut AppSession) -> Result<(), Mu
     {}
 
     eprintln!("\n");
-    //eprint!("{:#}", String::from_utf8_lossy(&resp[0..]));
+    eprint!("{:#}", String::from_utf8_lossy(&resp[0..]));
     eprintln!("\n");
     Ok(())
 }

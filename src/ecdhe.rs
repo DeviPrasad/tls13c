@@ -9,8 +9,8 @@ use x25519_dalek::{
     SharedSecret as X25519SharedSecret,
 };
 
-use crate::err::Mutter;
-use crate::ext::ServerSessionPublicKey;
+use crate::err::Error;
+use crate::ext::ServerPublicKey;
 
 #[allow(dead_code)]
 pub struct X25519KeyPair(X25519EphemeralSecret, X25519PublicKey);
@@ -70,9 +70,9 @@ impl P256KeyPair {
         P256EncodedPoint::from(self.public())
     }
 
-    pub fn dh(self, peer_pk_bytes: &[u8]) -> Result<P256SharedSecret, Mutter> {
+    pub fn dh(self, peer_pk_bytes: &[u8]) -> Result<P256SharedSecret, Error> {
         let peer_pk = P256PublicKey::from_sec1_bytes(peer_pk_bytes)
-            .map_err(|_| Mutter::Secp256r1KeyLenBad)?;
+            .map_err(|_| Error::Secp256r1KeyLenBad)?;
         Ok(self.private().diffie_hellman(&peer_pk))
     }
 }
@@ -124,12 +124,12 @@ impl DHSession {
         }
     }
 
-    pub fn x25519_key_share(&mut self) -> ServerSessionPublicKey {
-        ServerSessionPublicKey::x25519(self.x25519_key_pair.public_bytes())
+    pub fn x25519_key_share(&mut self) -> ServerPublicKey {
+        ServerPublicKey::x25519(self.x25519_key_pair.public_bytes())
     }
 
-    pub fn p256_key_share(&mut self) -> ServerSessionPublicKey {
-        ServerSessionPublicKey::secp256r1(self.p256_key_pair.public_bytes().as_bytes())
+    pub fn p256_key_share(&mut self) -> ServerPublicKey {
+        ServerPublicKey::secp256r1(self.p256_key_pair.public_bytes().as_bytes())
     }
 
     pub fn x25519_dh(self, pk: Vec<u8>) -> Vec<u8> {

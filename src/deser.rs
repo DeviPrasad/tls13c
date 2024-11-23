@@ -1,4 +1,4 @@
-use crate::err::Mutter;
+use crate::err::Error;
 
 //#[allow(dead_code)]
 #[derive(Debug)]
@@ -110,11 +110,11 @@ impl<'a> DeSer<'a> {
         }
     }
 
-    pub fn zlu8(&mut self) -> Result<bool, Mutter> {
+    pub fn zlu8(&mut self) -> Result<bool, Error> {
         if self.ru8() == 0 {
             Ok(true)
         } else {
-            Err(Mutter::BadVarLenVec)
+            Err(Error::BadVarLenVec)
         }
     }
 }

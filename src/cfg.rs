@@ -37,7 +37,7 @@ impl PeerSessionConfig {
             "",
             &[SupportedGroup::X25519, SupportedGroup::Secp256r1],
             &[SignatureScheme::RsaPssRsaeSha256],
-            &[CipherSuiteId::TlsChacha20Poly1305Sha256],
+            &[CipherSuiteId::TlsChaCha20Poly1305Sha256],
         )
     }
 
@@ -48,7 +48,7 @@ impl PeerSessionConfig {
             "/in",
             &[SupportedGroup::X25519, SupportedGroup::Secp256r1],
             &[SignatureScheme::RsaPssRsaeSha256],
-            &[CipherSuiteId::TlsChacha20Poly1305Sha256],
+            &[CipherSuiteId::TlsChaCha20Poly1305Sha256],
         )
     }
 
@@ -59,7 +59,7 @@ impl PeerSessionConfig {
             "",
             &[SupportedGroup::X25519, SupportedGroup::Secp256r1],
             &[SignatureScheme::RsaPssRsaeSha256],
-            &[CipherSuiteId::TlsChacha20Poly1305Sha256],
+            &[CipherSuiteId::TlsChaCha20Poly1305Sha256],
         )
     }
 
@@ -130,7 +130,7 @@ impl PeerSessionConfig {
             "",
             &[SupportedGroup::X25519],
             &[SignatureScheme::RsaPssRsaeSha256],
-            &[CipherSuiteId::TlsChacha20Poly1305Sha256],
+            &[CipherSuiteId::TlsChaCha20Poly1305Sha256],
         )
     }
 
@@ -142,7 +142,7 @@ impl PeerSessionConfig {
             "",
             &[SupportedGroup::X25519],
             &[SignatureScheme::RsaPssRsaeSha256],
-            &[CipherSuiteId::TlsChacha20Poly1305Sha256],
+            &[CipherSuiteId::TlsChaCha20Poly1305Sha256],
         )
     }
 
@@ -153,7 +153,7 @@ impl PeerSessionConfig {
             "about",
             &[SupportedGroup::X25519],
             &[SignatureScheme::Ed25519, SignatureScheme::RsaPssRsaeSha256],
-            &[CipherSuiteId::TlsChacha20Poly1305Sha256],
+            &[CipherSuiteId::TlsChaCha20Poly1305Sha256],
         )
     }
 
@@ -189,7 +189,7 @@ impl PeerSessionConfig {
             "",
             &[SupportedGroup::Secp256r1], // anything else throws AlertIllegalParameter.
             &[SignatureScheme::EcdsaSecp256r1Sha256], // anything else throws an AlertHandshakeFailure.
-            &[CipherSuiteId::TlsChacha20Poly1305Sha256],
+            &[CipherSuiteId::TlsChaCha20Poly1305Sha256],
         )
     }
 
@@ -201,7 +201,7 @@ impl PeerSessionConfig {
             "",
             &[SupportedGroup::X25519],
             &[SignatureScheme::RsaPssRsaeSha256],
-            &[CipherSuiteId::TlsChacha20Poly1305Sha256],
+            &[CipherSuiteId::TlsChaCha20Poly1305Sha256],
         )
     }
 
@@ -253,7 +253,7 @@ impl PeerSessionConfig {
             ],
             &[
                 CipherSuiteId::TlsAes256GcmSha384,
-                CipherSuiteId::TlsChacha20Poly1305Sha256,
+                CipherSuiteId::TlsChaCha20Poly1305Sha256,
             ],
         )
     }
@@ -293,7 +293,7 @@ impl PeerSessionConfig {
                 SignatureScheme::Ed25519,
                 SignatureScheme::EcdsaSecp256r1Sha256,
             ],
-            &[CipherSuiteId::TlsChacha20Poly1305Sha256],
+            &[CipherSuiteId::TlsChaCha20Poly1305Sha256],
         )
     }
 

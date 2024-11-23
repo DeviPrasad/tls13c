@@ -1,7 +1,7 @@
 #[allow(dead_code)]
 #[repr(u16)]
 #[derive(Clone, Debug)]
-pub enum Mutter {
+pub enum Error {
     RecType = 1,
     LegacyRecordVer = 2,
     FragmentLen = 4,
@@ -108,14 +108,15 @@ pub enum Mutter {
     X25519KeyLenBad = 247,
     Secp256r1KeyLenBad = 248,
     ServerKeyShareBad = 249,
+    EmptyDHSecret = 250,
 
     BadInput = 255,
 
     InternalError = 512,
 }
 
-impl<T> Into<Result<T, Mutter>> for Mutter {
-    fn into(self) -> Result<T, Mutter> {
+impl<T> Into<Result<T, Error>> for Error {
+    fn into(self) -> Result<T, Error> {
         Err(self)
     }
 }

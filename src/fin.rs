@@ -1,7 +1,7 @@
 use crate::def;
 use crate::def::{HandshakeType, RecordContentType};
 use crate::deser::DeSer;
-use crate::err::Mutter;
+use crate::err::Error;
 
 #[derive(Debug, Clone)]
 pub struct FinishedMsg {
@@ -9,21 +9,21 @@ pub struct FinishedMsg {
 }
 
 impl FinishedMsg {
-    pub fn deserialize(deser: &mut DeSer) -> Result<(Self, Vec<u8>), Mutter> {
+    pub fn deserialize(deser: &mut DeSer) -> Result<(Self, Vec<u8>), Error> {
         if !deser.have(4) {
-            return Mutter::DeserializationBufferInsufficient.into();
+            return Error::DeserializationBufferInsufficient.into();
         }
         if deser.peek_u8() != HandshakeType::Finished as u8 {
-            return Mutter::ExpectingFinishedMsg.into();
+            return Error::ExpectingFinishedMsg.into();
         };
         let len = deser.peek_u24_at(1) as usize;
         if !deser.have(4 + len) {
-            return Mutter::DeserializationBufferInsufficient.into();
+            return Error::DeserializationBufferInsufficient.into();
         }
         let head: [u8; 4] = deser
             .slice(4)
             .try_into()
-            .map_err(|_| Mutter::InternalError)?;
+            .map_err(|_| Error::InternalError)?;
         let mac = deser.slice(len);
         Ok((FinishedMsg { mac: mac.into() }, [&head, mac].concat()))
     }
@@ -38,11 +38,11 @@ impl FinishedMsg {
         msg
     }
 
-    pub fn check_mac(&self, tag: Vec<u8>) -> Result<(), Mutter> {
+    pub fn check_mac(&self, tag: Vec<u8>) -> Result<(), Error> {
         if self.mac == tag {
             Ok(())
         } else {
-            Mutter::FinishMsgVerificationFailed.into()
+            Error::FinishMsgVerificationFailed.into()
         }
     }
 }

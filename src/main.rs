@@ -33,7 +33,7 @@ mod tls_cl_tests {
     use crate::ch::ClientHelloMsg;
     use crate::deser::DeSer;
     use crate::ecdhe::X25519KeyPair;
-    use crate::ext::{ClientExtensions, ServerSessionPublicKey};
+    use crate::ext::{ClientExtensions, ServerPublicKey};
     use crate::rand;
     use crate::sh::ServerHelloMsg;
     use crate::stream::{Stream, TlsConnection};
@@ -51,7 +51,7 @@ mod tls_cl_tests {
 
             let random: Vec<u8> = rand::CryptoRandom::<32>::bytes().to_vec();
             let x25519_key_pair = X25519KeyPair::default();
-            let x25519_key_share = ServerSessionPublicKey::x25519(x25519_key_pair.public_bytes());
+            let x25519_key_share = ServerPublicKey::x25519(x25519_key_pair.public_bytes());
 
             let extensions_data = ClientExtensions::try_from((
                 peer.id.as_str(),
