@@ -288,24 +288,96 @@ Second, the `Certificate Verify`
 
 
 ### Protecting Confidentiality, Integrity, and Authenticity of TLS traffic
+In the handshake phase, each endpoint encrypts authentication messages it sends to its peer.
+The data record used to represent the tamper-proof encrypted message
+(i.e., integrity protected ciphertext) has a simple two-layered conceptual structure.
+The outer layer uses a few bytes of metadata to protect the integrity of the "inner plaintext",
+which is the handshake message per se. The outer structure is called `TLSCiphertext` while
+the encrypted message data is `TLSInnerPlaintext`.
 
-Section 5.2, page 89 of RFC 8446 presents two type definitions for protected data records. We reproduce the types here with minor notational embellishments. For example, we indicate position of each field relative to the beginning of the data structure. This comes handy while writing constraints on field-lengths. They are also useful in relating the sizes of the components of plaintext and ciphertext. We can easily turn such specifications into assertions in the Rust program.
+Keep in mind that peers exchange TLSCiphertext records on the wire. TLSCiphertext embeds a sequence of
+opaque data bytes of the encrypted handshake message. The metadata in TLSCiphertext has a fixed structure.
+It has three fields, and consumes only 5 bytes of which the first three bytes store fixed values.
+The third field encodes the length of the encrypted data. Section 5.2, page 89 of RFC 8446 defines
+these two structures for representing protected data records. We reproduce the definitions with
+minor notational embellishments. We indicate the offset of each field relative to the beginning
+of the structure. We use this information to define simple algebraic relations on field-lengths.
+This is also useful in relating the byte-lengths of `TLSInnerPlaintext` and `TLSCiphertext`.
 
+Consider the embellished version of `TLSCiphertext`:
 ```
     struct {
+        // offset 0; opaque_type:u8 = 23
         0:1  - ContentType opaque_type = application_data;
-            /* = 23 */
-        1:2  - ProtocolVersion legacy_record_version = TLS_V1.2;
-            /* = 0x0303 */
+
+        // offset 1; legacy_record_version:u16 = 0x0303
+        1:2  - ProtocolVersion legacy_record_version = TLS_V1.2
+
+        // offset 3; length: u16 where 21 < length < 2^14 + 256
         3:2  - uint16 length;
-            /* where 21 < val < 2^14+256; val aka CL */
-        5:CL - opaque aead_ct_record[TLSCipherText.length];
-            /* opaque[CL]*/
-    } TLSCiphertext; /* thus, sizeof(TLSCiphertext) = 5+CL */
+
+        // offset 5; encrypted_record:u8[length]
+        5:length - opaque encrypted_record[TLSCipherText.length];
+    } TLSCiphertext; // sizeof(TLSCiphertext) = 5 + length
 ```
 
-To get a better picture, we will turn the above data definitions into a horizontal layout, as a sequence of bytes, showing byte offsets of different fields.
+The same can be visualized as horizontally laid out sequence of bytes:
 
+```
+                            TLSCipherText Record
+
+    0    1    2    3    4    5    6                                  5+length
+    +----+----+----+----+----+----+----+--*--*----+----|---*--*-+----+
+    | 23 | 0x0303  |  length |            encrypted_record           |
+    +----+----+----+----+----+----+----+--*--*----+----|---*--*-+----+
+    <------- 5 bytes ------->|<------------ ciphertext ------------->
+
+```
+
+Recalling that only AEAD algorithms are used for encrypting the records, we name parts of
+the TlsCipherText record by their roles. We use `ipl` to mean `inner plaintext length`,
+the meaning of which will be made clear in the following section:
+
+```
+                TLSCipherText Record showing AEAD parts
+
+    0    1    2    3    4    5    6                    5+ipl         5+length
+    +----+----+----+----+----+----+----+--*--*----+----|---*--*-+----+
+    | 23 | 0x0303  |  length |     Encrypted Data      |     MAC     |
+    +----+----+----+----+----+----+----+--*--*----+----+---*--*-+----+
+    <--- Additional Data --->|<-- TLSInnerPlainText -->|<- AEAD Tag ->
+
+    |<---------------------->|<------------------------------------->|
+            AAD                            AEAD output
+         (5 bytes)                      ('length' bytes)
+                                           ciphertext
+
+```
+
+Since the AEAD algorithms used in TLS 1.3 produce a MAC of length 128 bits (16 bytes), we can render
+more details in the diagram:
+
+```
+                TlsCipherText Record showing AEAD parts
+
+    0    1    2    3    4    5    6                    5+ipl         5+length
+    +----+----+----+----+----+----+----+--*--*----+----|---*--*-+----+
+    | 23 | 0x0303  |  length |     Encrypted Data      |     MAC     |
+    +----+----+----+----+----+----+----+--*--*----+----+---*--*-+----+
+    <--- Additional Data --->|<-- TLSInnerPlainText -->|<- AEAD Tag ->
+                                    ('ipl' bytes)         (16 bytes)
+    |<---------------------->|<------------------------------------->|
+            AAD                            AEAD output
+         (5 bytes)                      ('length' bytes)
+                                           ciphertext
+
+```
+
+Therefore, $\, length = ipl + 16$.
+
+RFC 8446 also requires that  $\, length \lt 2^{14} + 256$, and so we have: $\,(ipl + 16) \lt (2^{14} + 256)$.
+
+Additionally, RFC 8446 states: `An endpoint that receives a record that exceeds this limit MUST terminate the connection with a "record_overflow" alert.`
 
 ### TlsInnerPlaintext
 This structure holds the plaintext which is to be protected. The plaintext may be a handshake message fragment or raw bytes of the application data. It holds handshake message in the authentication phase, and subsequently, post-handshake, it holds application data exchanged by the peers.
@@ -397,20 +469,6 @@ TLS 1.3 defines 5 AEAD algorithms for record protection:
 
 In `tlsc`, we support the first three algorithms from this list which includes the mandatory AES_128_GCM.
 
-```
-
-    0    1    2    3    4    5    6                    5+IPL      5+CL
-    +----+----+----+----+----+----+----+--*--*----+----|---*--*-+----+
-    | 23 | 0x0303  |    CL   |     Encrypted Data      |     MAC     |
-    +----+----+----+----+----+----+----+--*--*----+----+---*--*-+----+
-    <--- Additional Data --->|<-- TlsInnerPlainText -->|<- AEAD Tag ->
-
-    |<---------------------->|<------------------------------------->|
-            AAD                            AEAD output
-         (5 bytes)                         (CL bytes)
-         plaintext                         ciphertext
-
-```
 
 ### Key Derivation
 The server processes the ClientHello message and determines the ciphersuite for the session. The server responds with the ServerHello message which includes its *key share*, which is server's ephemeral Diffie-Hellman share. In `tlsc`, ClientHello contains two shares, each in an EC group: X25519 and secp256r1. These are the only two `supported_groups` in `tlsc`.
