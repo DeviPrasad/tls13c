@@ -15,6 +15,29 @@
 
 ## DICP - Part 1
 
+### Flights and Message Encryption
+
+A TLS flight consists of one or more messages sent in a sequence without waiting for response from the receiving endpoint. In a typical session, for example, we can relate messages and flights in a simple way:
+
+```
+    Flight     Message               Sender
+   -----------------------------------------
+      1      Client Hello            Client
+      2      Server Hello            Server
+      3      Change Cipher Spec      Server
+      4      Encrypted Extensions    Server
+             Certificate
+             Certificate Verify
+             Server Finished
+      5      Client Finished         Client
+
+```
+
+A TLS server normally sends `Encrypted Extensions`, `Certificate`, `Certificate Verify`, and `Server Finished` messages in one flight.
+
+Most servers encrypt individual plaintext messages and send each ciphertext in turn. The sequence of these ciphertext records represents a flight. A few servers, on the contrary, encrypt the entire sequence of plaintext messages into one ciphertext block, and send the ciphertext in one flight. In our tests, we have found "x.com:443" and "www.google.com:443" employ the latter method for .
+
+
 ### Background
 Virtually every online financial transaction is protected by Transport Layer Security (TLS). Open Banking standards across the globe make TLS version 1.2 or above mandatory for participating entities. TLS is undoubtedly one of the most widely deployed internet security protocol. More recent messaging protocol, MLS (RFC 9420, section-16.1), recommends all MLS messages to be transmitted over TLS 1.3.
 
@@ -30,7 +53,7 @@ An Authenticated Encryption algorithm MAY incorporate internal state information
 
 ### AEADs and Secure Channel
 In [Data Is a Stream: Security of Stream-Based Channels](https://eprint.iacr.org/2017/1191.pdf), Marc Fischlin et.al.,
-note that while AEAD provides both confidentiality and integrity guarantees for data, on its own, AEAD does not constitute a secure channel. For example, in most practical situations, a secure channel should provide more than simple encryption of messages, but also guarantee detection of (and possibly recovery from) outof-order delivery and replays of messages.
+note that while AEAD provides both confidentiality and integrity guarantees for data, on its own, AEAD does not constitute a secure channel. For example, in most practical situations, a secure channel should provide more than simple encryption of messages, but also guarantee detection of (and possibly recovery from) out-of-order delivery and replays of messages.
 
 
 ### The State Machine
@@ -108,8 +131,66 @@ At the end of key exchange, the client and server establish a set of shared secr
 ### Key Exchange Phase
 
 
-Client sends `ClintHello` to the server: 
+Client sends `ClintHello` to the server:
 <a id="xref-client-hello-spec"></a>
+
+$$
+    {\begin{array}{llll}
+    \llbracket & & & \\
+        & server\_name & {\larr} & {\rm\normalsize{SERVER\_NAME}} \\
+        & {{handshake\_context}}       & {\larr} & client\_hello\_msg\\
+        & {{cipher\_suite\_ids}} & {\larr} & [{cid_{1}, ..., cid_{j}}] \ \text{where} \ 1 \le j \le 5\\
+        & {{key\_shares}}    & {\larr} & [(ecg_1, (sk^c_1, pk^c_1)), \\
+        &&&                         \ \, ..., \\
+        &&&                         \ \, (ecg_m, (sk^c_m, pk^c_m))] \ \text{where} \ 1 \le m\\
+        & {{signature\_schemes}}    & {\larr} & {<}s_1, ..., s_n{>} {\hspace*{60mm}} \\
+    \rrbracket & & & \\
+    \end{array}}
+$$
+
+**ClientHello**
+![client_hello_layout](./images/client_hello_layout.jpg)
+
+
+Server state after deriving its handshake secrets:
+$$
+    {\begin{array}{llll}
+    \llbracket & & & \\
+        & {handshake\_context}       & {\larr} & {\rm\normalsize{Concat}}(client\_hello\_msg, \\
+        &&&                                        \hspace*{12mm} server\_hello\_msg)\\
+        & {cipher\_suite\_id} & {\larr} & cid \ \rm{where} \ cid \in \{{\rm\normalsize{CH}}.cid_{1}, ..., {\rm\normalsize{CH}}.cid_{j}\}\\
+        & {cipher\_suite} & {\larr} & {\rm\normalsize{CipherSuite}}(cid) \ \text{where} \ cid \in \{{\rm\normalsize{CH}}.cid_{1}, ..., {\rm\normalsize{CH}}.cid_{j}\}\\
+        & {traffic\_secrets} & {\larr} & (hs, hts^s, hts^c) \\
+        &&&                               {\rm{where}} \ hs \ \ \, = {\rm\normalsize{HandshakeSecret(...)}} \\
+        &&&                               \hspace*{9mm}\ hts^s = {\rm\normalsize{ServerHandshakeTrafficSecret(...)}} \\
+        &&&                               \hspace*{9mm}\ hts^c = {\rm\normalsize{ClientHandshakeTrafficSecret(...)}} \\
+        & {server\_cert} & {\larr} & {\rm\normalsize{X509Cert}}(n, \ s) \\
+        &&&                          \ \ \rm{where} \ n = {\rm\normalsize{CH}}.server\_name, \\
+        &&&                          \ \ \hspace*{9mm} \ s \in \{{\rm\normalsize{CH}}.s_{1}, ..., {\rm\normalsize{CH}}.s_{n}\}\\
+    \rrbracket & & & \\
+    \end{array}}
+$$
+
+**ServerHello**
+![server_hello_layout](./images/server_hello_layout.jpg)
+
+
+Client receives the server hello message, computes handshake secrets, and prepares for the traffic authentication sub-protocol. This is the client state at the beginning of the authentication phase:
+$$
+    {\begin{array}{llll}
+    \llbracket & & & \\
+        & {{handshake\_context}}       & {\larr} & {\rm\normalsize{Concat}}(client\_hello\_msg, \\
+        &&&                                         \hspace*{12mm} server\_hello\_msg) \\
+        & {{cipher\_suite\_id}} & {\larr} & {\rm\normalsize{SH}}.cid, \\
+        & {{cipher\_suite}} & {\larr} & {\rm\normalsize{CipherSuite}}({\rm\normalsize{SH}}.cid) \\
+        & {{traffic\_secrets}} & {\larr} & (hs, hts^s, hts^c)  {\hspace*{60mm}} \\
+        &&&                               {\rm{where}} \ hs \ \ \, = {\rm\normalsize{HandshakeSecret(...)}} \\
+        &&&                               \hspace*{9mm}\ hts^s = {\rm\normalsize{ServerHandshakeTrafficSecret(...)}} \\
+        &&&                               \hspace*{9mm}\ hts^c = {\rm\normalsize{ClientHandshakeTrafficSecret(...)}} \\
+    \rrbracket & & & \\
+    \end{array}}
+$$
+
 $$
     {\begin{array}{l}
     (h^c, \, \{\tau_1,..,\tau_j\}, \, \{\kappa^c_{g_1},.., \kappa^c_{g_n}\}) {\hspace*{2.6in}}
@@ -117,7 +198,7 @@ $$
     \\
     {\hspace*{2.5cm}}{\large{\xrightarrow {client\_hello(sn, \, \{ g_1,..,g_m \}, \, \{s_1,..,s_i\}, \,
     \{\tau_1,..,\tau_j\},
-    \, \{k^c_{g_1},.., k^c_{g_m}\}, \, r_c)}}}\\
+    \, \{k^c_{g_1},.., k^c_{g_m}\}, \, r_c)}}} \\
     \end{array}}
 $$
 
@@ -190,12 +271,7 @@ $$
 
 Note that the message context is merely a concatenation of *plaintext slices* of ClientHello and ServerHello. The plaintext slices start from the sixth byte (offset 5 in the zero-based index). The first five bytes of ClientHello and ServerHello are data layer record headers. This is clearly shown in the two diagrams below. Record layer headers have a gray background while the plaintext fragments are shown in the clear.
 
-**ClientHello**
-![client_hello_layout](./images/client_hello_layout.jpg)
 
-
-**ServerHello**
-![server_hello_layout](./images/server_hello_layout.jpg)
 
 #### Encrypted Extensions
 As a part of handshake, the server is required to send the EncryptedExtensions message immediately after the ServerHello message ([section 4.3.1, page 60 of TLS](#xref-tls1.3-enc-ext)). This is the first encrypted message in the traffic. The server  encrypted using the key tucked in the $\Chi$ component of the session
@@ -207,7 +283,7 @@ In 1-RTT handshake, the server sends out the following three messages: `Certific
 First, the `Certificate` message contains server's (non-empty) certificate chain. It is mandatory for servers to provide a list of X.509 certificates. Recall that the `server_name` extension in `ClientHello` identifies a server endpoint. The first certificate in the chain represents the endpoint identified by `server_name`. (Recall also that `sn` argument in [ClientHello](#xref-client-hello-spec) stands for `server_name`). The first certificate in the list, therefore, contains a public key to be used to verify the contents of the immediately following `CertificateVerify` message.
 
 
-Second, the `Certificate Verify` 
+Second, the `Certificate Verify`
 
 
 
@@ -215,45 +291,55 @@ Second, the `Certificate Verify`
 
 Section 5.2, page 89 of RFC 8446 presents two type definitions for protected data records. We reproduce the types here with minor notational embellishments. For example, we indicate position of each field relative to the beginning of the data structure. This comes handy while writing constraints on field-lengths. They are also useful in relating the sizes of the components of plaintext and ciphertext. We can easily turn such specifications into assertions in the Rust program.
 
+```
     struct {
-        0:1    - ContentType opaque_type = application_data; /* val u8 = 23 */
-        1:2    - ProtocolVersion legacy_record_version = TLS_V1.2; /* val u16 = 0x0303 */
-        3:2    - uint16 length; /* val u16 where 21 < value < 2^14+256; val aka CL */
-        5:CL   - opaque aead_ct_record[TLSCipherText.length]; /* opaque[CL]*/
+        0:1  - ContentType opaque_type = application_data;
+            /* = 23 */
+        1:2  - ProtocolVersion legacy_record_version = TLS_V1.2;
+            /* = 0x0303 */
+        3:2  - uint16 length;
+            /* where 21 < val < 2^14+256; val aka CL */
+        5:CL - opaque aead_ct_record[TLSCipherText.length];
+            /* opaque[CL]*/
     } TLSCiphertext; /* thus, sizeof(TLSCiphertext) = 5+CL */
-
+```
 
 To get a better picture, we will turn the above data definitions into a horizontal layout, as a sequence of bytes, showing byte offsets of different fields.
 
 
 ### TlsInnerPlaintext
-This structure holds the plaintext whoch is to be protected. The plaintext may be a handshake message fragment or raw bytes of the application data. It holds handshake message in the authentication phase, and subsequently, post-handshake, it holds application data exchanged by the peers.
+This structure holds the plaintext which is to be protected. The plaintext may be a handshake message fragment or raw bytes of the application data. It holds handshake message in the authentication phase, and subsequently, post-handshake, it holds application data exchanged by the peers.
 
 ```
     struct {
-        0:PL      - opaque content[TLSPlaintext.length]; /* opaque[PL] */
-        PL:1      - ContentType type; /* val u8 = 22 if handshake and 23 if application_data */
-        PL+1:ZL   - uint8 zeroes[ZL]; /* ZL == CL-(PL+1)-16 */
-    } TLSInnerPlaintext; /* thus, sizeof(TLSInnerPlaintext) = IPL == PL+1+ZL == CL-16 */
+        0:PL     - opaque content[TLSPlaintext.length];
+            /* opaque[PL] */
+        PL:1     - ContentType type;
+            /* = 22 if handshake; = 23 if application_data */
+        PL+1:ZL  - uint8 zeroes[ZL];
+            /* ZL == CL-(PL+1)-16 */
+    } TLSInnerPlaintext;
+    /* thus, sizeof(TLSInnerPlaintext) = IPL = PL+1+ZL = CL-16 */
 ```
 
 In the following discussion we will use PL to mean the size of plaintext, in bytes. For brevity, we use CT for ContentType.
 
 In TLSInnerPlaintext, the first field named `content` holds the plaintext bytes. The size of this array is PL (bytes). TLS does not allow zero length `content` field for handshake and alert messages.
 
-The next field `type` holds the content type of the plaintext record. It denotes the `ContentType` of the plaintext in `content` field. CT will have different values depending on the message or data being protected. Thus,
+The next field `type` holds the content type of the plaintext record. It denotes the `ContentType` of the message in `content` field. CT will have different values depending on the message or data being protected. Thus,
 
 ```
-        CT = 21 when plaintext is an alert message,
-        CT = 22 when plaintext is one of the following TLS handshake messages
-                alert,
-                new_session_tcket,
-                encrypted_extensions,
-                certificate,
-                certificate_verify,
-                finished,
+        CT = 21 - an alert message,
+        CT = 22 - one of the following handshake messages
+                    - alert
+                    - new_session_ticket
+                    - encrypted_extensions
+                    - certificate
+                    - certificate_verify
+                    - finished
         and
-        CT = 23 when the plaintext is application specific data (i.e, HTTP request or response payload).
+        CT = 23 - application specific data
+            (i.e, HTTP request/response payload)
 ```
 
 TLS 1.3 allows encrypted records to be padded with zeroes as long as the total size of TLSInnerPlaintext record doesn't exceed 2^14 + 1 bytes. When the sender inflates the size of an encrypted record, observers cannot tell the actual size of the plaintext. It is obvious padding increases record size, and may adversely impact overall performance.
@@ -263,37 +349,35 @@ Section 5.4 of RFC 8446 describes many aspects of record padding. In our tests, 
 The following diagram shows the structure of TLSInnerPlaintext without padding zeroes, which is the most common case.
 
 ```
-                    0    1    2    3    4                              PL   PL+1
-                    +----+----+----+----+--/-**-**-**-/-+----+----+----+----+
-                    |       Handshake Message or Application Data      | CT |
-                    +----+----+----+----+--/-**-**-**-/-+----+----+----+----+
-                    <------------------- Plaintext ------------------->|    |
-                                        (PL bytes)
+    0    1    2    3                            PL   PL+1
+    +----+----+----+----/-*--*-/-+----+----+----+----+
+    |  Handshake Message or Application Data    | CT |
+    +----+----+----+----/-*--*-/-+----+----+----+----+
+    <------------------- Plaintext ----------------->|
+                        (PL bytes)
 
-                    |<----------------------------------------------------->|
-                                        TlsInnerPlaintext
-                                        (PL+1 bytes)
+    |<---------------------------------------------->|
+                    TlsInnerPlaintext
+                      (PL+1 bytes)
 
-
-                              TlsInnerPlaintext without padding
+            TlsInnerPlaintext without padding
 
 ```
 
 TlsInnerPlaintext with arbitrary zero padding at the end of the data block may be visualized thus:
 
 ```
-        0    1    2    3    4                              PL   PL+1              PL+1+ZL
-        +----+----+----+----+--/-**-**-**-/-+----+----+----+----+-***-/**-**-**/--+
-        |       Handshake Message or Application Data      | CT |  padding zeroes |
-        +----+----+----+----+--/-**-**-**-/-+----+----+----+----+-***-/**-**-**/--+
-        <------------------- Plaintext ------------------->|    |<- Optional Pad ->
-                            (PL bytes)                               (ZL bytes)
+    0    1    2    3                           PL  PL+1              PL+1+ZL
+    +----+----+----+---*---*---+----+----+----+----+--*-----*----*---+
+    |  Handshake Message or Application Data  | CT |  Padding zeroes |
+    +----+----+----+---*---*---+----+----+----+----+-*------*----*---+
+    <--------------- Plaintext -------------->|    |<- Optional Pad ->
+                    (PL bytes)                          (ZL bytes)
 
-        |<----------------------------------------------------------------------->|
-                                    TlsInnerPlaintext
+    |<-------------------------------------------------------------->|
+                            TlsInnerPlaintext
 
-
-                    TlsInnerPlaintext with arbitray-sized zero padding
+            TlsInnerPlaintext with arbitrary-sized zero padding
 
 ```
 
@@ -304,27 +388,27 @@ TLS 1.3 employs only Authenticated Encryption with Associated Data (AEAD) cipher
 TLS 1.3 defines 5 AEAD algorithms for record protection:
 
 ```
-        AES_128_GCM         - compliant application MUST implement this AEAD algorithm.
-        AES_256_GCM         - compliant application SHOULD implement this AEAD algorithm.
-        CHACHA20_POLY1305   - compliant application SHOULD implement this AEAD algorithm.
-        AES_128_CCM
-        AES_256_CCM
+    AES_128_GCM         - MUST implement this AEAD algorithm.
+    AES_256_GCM         - SHOULD implement this AEAD algorithm.
+    CHACHA20_POLY1305   - SHOULD implement this AEAD algorithm.
+    AES_128_CCM
+    AES_256_CCM
 ```
 
 In `tlsc`, we support the first three algorithms from this list which includes the mandatory AES_128_GCM.
 
 ```
 
-        0    1    2    3    4    5    6    7                          5+IPL                 5+CL
-        +----+----+----+----+----+----+----+--/-**-**-**-/--+----+----+----+--/-*-*-/-+----+
-        | 23 | 0x0303  |    CL   |                                    |         MAC        |
-        +----+----+----+----+----+----+----+--/-**-**-**-/--+----+----+----+--/-*-*-/-+----+
-        <--- Additional Data --->|<-- Encrypted  TlsInnerPlainText -->|<-- AEAD Auth TAG -->
+    0    1    2    3    4    5    6                    5+IPL      5+CL
+    +----+----+----+----+----+----+----+--*--*----+----|---*--*-+----+
+    | 23 | 0x0303  |    CL   |     Encrypted Data      |     MAC     |
+    +----+----+----+----+----+----+----+--*--*----+----+---*--*-+----+
+    <--- Additional Data --->|<-- TlsInnerPlainText -->|<- AEAD Tag ->
 
-        |<---------------------->|<------------------------------------------------------->|
-                AAD                                   AEAD output
-            (5 bytes)                                (CL bytes)
-            plaintext                                ciphertext
+    |<---------------------->|<------------------------------------->|
+            AAD                            AEAD output
+         (5 bytes)                         (CL bytes)
+         plaintext                         ciphertext
 
 ```
 

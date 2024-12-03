@@ -130,7 +130,7 @@ impl KeyExchangeSession {
         } else if serv_key.group == SupportedGroup::Secp256r1 {
             dh.p256_dh(serv_key.public_key)
         } else {
-            return Error::EmptyDHSecret.into()
+            return Error::EmptyDHSecret.into();
         };
 
         assert!(!dh_shared_secret.is_empty());
@@ -390,9 +390,8 @@ impl<'a> MessageAuthenticator<'a> {
             session.secrets.tls_cipher_suite_name.try_into()?;
         tx_hash.update(&session.msg_ctx);
         while !MessageAuthenticator::finished(pos) {
-            let ciphertext_rec = session
-                .read_ciphertext_record()
-                .expect("handshake message ciphertext");
+            let ciphertext_rec = session.read_ciphertext_record()?;
+            log::info!("Read ciphertext record {} of size {} bytes", pos + 1, ciphertext_rec.len());
             // decrypt and cache TlsInnerPlaintext records
             let aad = ciphertext_rec[0..5].to_vec();
             let mut dec_data_buf = ciphertext_rec[5..].to_vec();
@@ -404,6 +403,7 @@ impl<'a> MessageAuthenticator<'a> {
             let mut auth = MessageAuthenticator::new(&dec_data_buf, pos);
             while auth.plaintext().is_some() {
                 if let Err(e) = auth.authenticate_next(session) {
+                    log::error!("Fragmented record across ciphertext boundaries in a flight");
                     return e.into();
                 }
             }
