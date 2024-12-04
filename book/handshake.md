@@ -307,18 +307,19 @@ This is also useful in relating the byte-lengths of `TLSInnerPlaintext` and `TLS
 Consider the embellished version of `TLSCiphertext`:
 ```
     struct {
-        // offset 0; opaque_type:u8 = 23
+        // offset 0; size = 1; opaque_type = 23
         0:1  - ContentType opaque_type = application_data;
 
-        // offset 1; legacy_record_version:u16 = 0x0303
+        // offset 1; size = 2, legacy_record_version = 0x0303
         1:2  - ProtocolVersion legacy_record_version = TLS_V1.2
 
-        // offset 3; length: u16 where 21 < length < 2^14 + 256
+        // offset 3; size = 2; 21 < length < 2^14 + 256
         3:2  - uint16 length;
 
-        // offset 5; encrypted_record:u8[length]
+        // offset 5; size = length; encrypted_record:u8[length]
         5:length - opaque encrypted_record[TLSCipherText.length];
-    } TLSCiphertext; // sizeof(TLSCiphertext) = 5 + length
+    } TLSCiphertext;
+    // sizeof(TLSCiphertext) = 5 + length
 ```
 
 The same can be visualized as horizontally laid out sequence of bytes:
@@ -384,14 +385,20 @@ This structure holds the plaintext which is to be protected. The plaintext may b
 
 ```
     struct {
-        0:PL     - opaque content[TLSPlaintext.length];
-            /* opaque[PL] */
-        PL:1     - ContentType type;
-            /* = 22 if handshake; = 23 if application_data */
+        // Plaintext of handshake message or application data.
+        // PL stands for plaintext length.
+        // offset 0; size = PL;
+        0:PL - opaque content[TLSPlaintext.length];
+
+        // CT stands for ContentType.
+        // offset PL; size = 1; type = 22 if handshake, and type = 23 if application_data
+        PL:1 - ContentType type;
+
+        // ZL stands for zero padding length.
+        // offset PL+1; size = ZL; 0 <= ZL.
         PL+1:ZL  - uint8 zeroes[ZL];
-            /* ZL == CL-(PL+1)-16 */
     } TLSInnerPlaintext;
-    /* thus, sizeof(TLSInnerPlaintext) = IPL = PL+1+ZL = CL-16 */
+    // sizeof(TLSInnerPlaintext) = IPL = PL+1+ZL = TLSCiphertext.length-16
 ```
 
 In the following discussion we will use PL to mean the size of plaintext, in bytes. For brevity, we use CT for ContentType.
@@ -423,7 +430,7 @@ The following diagram shows the structure of TLSInnerPlaintext without padding z
 ```
     0    1    2    3                            PL   PL+1
     +----+----+----+----/-*--*-/-+----+----+----+----+
-    |  Handshake Message or Application Data    | CT |
+    |             Handshake Message             | CT |
     +----+----+----+----/-*--*-/-+----+----+----+----+
     <------------------- Plaintext ----------------->|
                         (PL bytes)
@@ -441,7 +448,7 @@ TlsInnerPlaintext with arbitrary zero padding at the end of the data block may b
 ```
     0    1    2    3                           PL  PL+1              PL+1+ZL
     +----+----+----+---*---*---+----+----+----+----+--*-----*----*---+
-    |  Handshake Message or Application Data  | CT |  Padding zeroes |
+    |              Handshake Message          | CT |      zeroes     |
     +----+----+----+---*---*---+----+----+----+----+-*------*----*---+
     <--------------- Plaintext -------------->|    |<- Optional Pad ->
                     (PL bytes)                          (ZL bytes)
