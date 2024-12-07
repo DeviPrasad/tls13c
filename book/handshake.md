@@ -12,9 +12,6 @@
         onload="renderMathInElement(document.body);"></script>
 </head>
 
-
-## DICP - Part 1
-
 ### Flights and Message Encryption
 
 A TLS flight consists of one or more messages sent in a sequence without 
@@ -511,16 +508,16 @@ denotes the `ContentType` of the message in `content` field. CT will have
 different values depending on the message or data being protected. Thus,
 
 ```
-        CT = 21 - an alert message,
-        CT = 22 - one of the following handshake messages
-                    - encrypted_extensions
-                    - certificate
-                    - certificate_verify
-                    - finished
-                    - new_session_ticket
-        CT = 23 - application specific data
-            (i.e, HTTP request/response payload)
-```
+    CT = 21 - an alert message,
+    CT = 22 - one of the following messages
+               - encrypted_extensions
+               - certificate
+               - certificate_verify
+               - finished
+               - new_session_ticket
+    CT = 23 - application specific data
+        (i.e, HTTP request/response payload)
+``
 
 TLS 1.3 allows encrypted records to be padded with zeroes as long as the 
 total size of TLSInnerPlaintext record doesn't exceed 2^14 + 1 bytes. When 
@@ -610,9 +607,9 @@ of security.
 TLS 1.3 defines 5 AEAD algorithms for record protection:
 
 ```
-    AES_128_GCM         - MUST implement this AEAD algorithm.
-    AES_256_GCM         - SHOULD implement this AEAD algorithm.
-    CHACHA20_POLY1305   - SHOULD implement this AEAD algorithm.
+    AES_128_GCM         - MUST implement.
+    AES_256_GCM         - SHOULD implement.
+    CHACHA20_POLY1305   - SHOULD implement.
     AES_128_CCM
     AES_256_CCM
 ```
