@@ -19,16 +19,16 @@ waiting for response from the receiving endpoint. In a typical session,
 for example, we can relate messages and flights in a simple way:
 
 ```
-    Flight     Message               Sender
-   -----------------------------------------
-      1      Client Hello            Client
-      2      Server Hello            Server
-      3      Change Cipher Spec      Server
-      4      Encrypted Extensions    Server
-             Certificate
-             Certificate Verify
-             Server Finished
-      5      Client Finished         Client
+Flight     Message           Sender
+-------------------------------------
+  1    Client Hello           Client
+  2    Server Hello           Server
+  3    Change Cipher Spec     Server
+  4    Encrypted Extensions   Server
+       Certificate
+       Certificate Verify
+       Server Finished
+  5    Client Finished        Client
 
 ```
 
@@ -52,22 +52,6 @@ protocol, MLS (RFC 9420, section-16.1), recommends all MLS messages
 to be transmitted over TLS 1.3.
 
 
-### AEAD
-Authenticated Encryption with Associated Data (AEAD) [Rog02] has emerged as 
-being the right cryptographic tool for building secure channels. AEAD provides
-both confidentiality and integrity guarantees for data.
-
-
-### Stateful AEAD
-[Requirements on AEAD Algorithm Specifications](https://datatracker.ietf.org/doc/html/rfc5116)
-
-An Authenticated Encryption algorithm MAY incorporate internal state information that is maintained between invocations of the encrypt operation, e.g., to allow for the construction of distinct values that are used as internal nonces by the algorithm.  An AEAD algorithm of this sort is called stateful.  This method could be used by an algorithm to provide good security even when the application inputs zero-length nonces.
-
-### AEADs and Secure Channel
-In [Data Is a Stream: Security of Stream-Based Channels](https://eprint.iacr.org/2017/1191.pdf), Marc Fischlin et.al.,
-note that while AEAD provides both confidentiality and integrity guarantees for data, on its own, AEAD does not constitute a secure channel. For example, in most practical situations, a secure channel should provide more than simple encryption of messages, but also guarantee detection of (and possibly recovery from) out-of-order delivery and replays of messages.
-
-
 ### The State Machine
 
 In part 1 we will consider the implementation of a TLS 1.3 client program. 
@@ -79,33 +63,38 @@ the shape of the interaction, refer to Figure 1 on page 11 of RFC 8446.
 We will also use the state machines `A.1. Client` (page 120) and 
 `A.2. Server` (page 121) in Appendix A.
 
+```
+  Client               Server
 
+<Key Exchange>
+  ClientHello
+    +key_share
+    +signature_algorithms
 
-    Client                              Server
+            -------->
 
-    <Key Exchange>
-        ClientHello
-            + key_share
-            + signature_algorithms
-                            -------->
-                                        <Key Exchange>
-                                            ServerHello
-                                                + key_share
+                <Key Exchange>
+                  ServerHello
+                    +key_share
 
-                                        <Server Params>
-                                            {EncryptedExtensions}
+                <Server Params>
+                  EncryptedExtensions
 
-                                        <Auth>
-                                            {Certificate}
-                                            {CertificateVerify}
-                                            {Finished}
-                            <--------
+                <Auth>
+                  {Certificate}
+                  {CertificateVerify}
+                  {Finished}
 
-    <Auth>
-        {Finished}
+            <-------<
 
-    <App>
-    [Application Data]    <------->     [Application Data]
+<Auth>
+  {Finished}
+
+<App>
+[App Data] <--> [App Data]
+
+```
+
 
 `Figure 1 - Shape of 1-RTT Handshake without Client Authentication.`
 
@@ -446,18 +435,18 @@ Since the AEAD algorithms used in TLS 1.3 produce a MAC of length 128 bits
 (16 bytes), we can render more details in the diagram:
 
 ```
-                TlsCipherText Record showing AEAD parts
+        TlsCipherText Record showing AEAD parts
 
-    0    1    2    3    4    5    6                    5+ipl         5+length
-    +----+----+----+----+----+----+-----*/-/*----+----+-----*/-/*----+
-    | 23 | 0x0303  |  length |      Encrypted Data    |      MAC     |
-    +----+----+----+----+----+----+-----*/-/*----+----+-----*/-/*----+
-    <--- Additional Data --->|<-- TLSInnerPlainText -->|<- AEAD Tag ->
-                                    ('ipl' bytes)         (16 bytes)
-    |<---------------------->|<------------------------------------->|
-            AAD                            AEAD output
-         (5 bytes)                      ('length' bytes)
-                                           ciphertext
+    0   1   2   3   4   5   6               5+ipl    5+length
+    +---+---+---+---+---+---+--*--*----+----+--*--*--+
+    | 23| 0x0303| length|  Encrypted Data   |  MAC   |
+    +---+---+---+---+---+---+--*--*----+----+--*--*--+
+    <-Additional Data ->| TLSInnerPlainText |<- Tag ->
+                           ('ipl' bytes)     (16 bytes)
+    |<----------------->|<-------------------------->|
+            AAD                  AEAD output
+         (5 bytes)             ('length' bytes)
+                                  ciphertext
 
 ```
 
@@ -477,24 +466,29 @@ It holds handshake message in the authentication phase, and subsequently,
 post-handshake, it holds application data exchanged by the peers.
 
 ```
-    struct {
-        // Plaintext handshake message (or application data).
-        // PL stands for plaintext length.
-        // offset 0; size = PL;
-        0:PL - opaque content[TLSPlaintext.length];
+struct {
+    // Plaintext handshake message
+    // PL stands for plaintext length.
+    // offset 0; size = PL;
+    0:PL - opaque content[TLSPlaintext.length];
 
-        // CT stands for ContentType.
-        // offset PL; size = 1;
-        // type = 22 if handshake, and type = 23 if application_data
-        PL:1 - ContentType type;
+    // CT stands for ContentType.
+    // offset PL; size = 1;
+    // type = 22 if handshake, and type = 23 if application_data
+    PL:1 - ContentType type;
 
-        // ZL stands for zero padding length.
-        // offset PL+1; size = ZL; 0 <= ZL.
-        PL+1:ZL  - uint8 zeroes[ZL];
-    } TLSInnerPlaintext;
-    // sizeof(TLSInnerPlaintext) = IPL = PL + 1 + ZL
-    // sizeof(TLSInnerPlaintext) = (TLSCiphertext.length - 16) because length(AEAD MAC) = 16
+    // ZL stands for zero padding length.
+    // offset PL+1; size = ZL; 0 <= ZL.
+    PL+1:ZL  - uint8 zeroes[ZL];
+} TLSInnerPlaintext;
+// sizeof(TLSInnerPlaintext) = PL + 1 + ZL
+
+
 ```
+
+Because length(AEAD MAC) = 16 in the AEAD algorithms used in TLS 1.3, we have
+
+$$ sizeof(TLSInnerPlaintext) = (TLSCiphertext.length - 16) $$
 
 In the following discussion we will use PL to mean the size of plaintext, 
 in bytes. For brevity, we use CT for ContentType.
@@ -508,16 +502,18 @@ denotes the `ContentType` of the message in `content` field. CT will have
 different values depending on the message or data being protected. Thus,
 
 ```
-    CT = 21 - an alert message,
-    CT = 22 - one of the following messages
-               - encrypted_extensions
-               - certificate
-               - certificate_verify
-               - finished
-               - new_session_ticket
-    CT = 23 - application specific data
-        (i.e, HTTP request/response payload)
-``
+
+CT = 21 - an alert message,
+CT = 22 - one of the following messages
+    - encrypted_extensions
+    - certificate
+    - certificate_verify
+    - finished
+    - new_session_ticket
+CT = 23 - application specific data
+    (i.e, HTTP payload)
+
+```
 
 TLS 1.3 allows encrypted records to be padded with zeroes as long as the 
 total size of TLSInnerPlaintext record doesn't exceed 2^14 + 1 bytes. When 
@@ -554,17 +550,17 @@ may be visualized thus:
 
 ```
     
-    0    1    2    3                           PL  PL+1              PL+1+ZL
-    +----+----+----+---*---*---+----+----+----+----+--*-----*----*---+
-    |              Handshake Message          | CT |      zeroes     |
-    +----+----+----+---*---*---+----+----+----+----+-*------*----*---+
-    <--------------- Plaintext -------------->|    |<- Optional Pad ->
-                    (PL bytes)                          (ZL bytes)
+    0                              PL    PL+1       PL+1+ZL
+    +----+----+---*---*---+----+----+----+--*---*----+
+    |    Handshake Message          | CT |  zeroes   |
+    +----+----+---*---*---+----+----+----+--*---*----+
+    <---------- Plaintext --------->|    | Optional  |
+                (PL bytes)                 (ZL bytes)
 
-    |<-------------------------------------------------------------->|
-                            TlsInnerPlaintext
+    |<---------------------------------------------->|
+                    TlsInnerPlaintext
 
-            TlsInnerPlaintext with arbitrary-sized zero padding
+      TlsInnerPlaintext with arbitrary-sized zero padding
 
 ```
 
@@ -574,22 +570,23 @@ message payload is
 
 ```
 
-                              TlsInnerPlaintext (PL+1 bytes)
-                   |<-------------------------------------------->|
-                   +----+----+----+--/-*-*-/--+----+----+----+----+
-                   |            Handshake Message            | CT |
-                   +----+----+----+--/-*-*-/--+----+----+----+----+
-                    \                                             /
-                     \_______                             _______/
-                             \     (AEAD ENCRYPTION)     /
-                              \                         /
-     +----+----+----+----+----+----+-----*/-/*-----+----+----*/-/*----+
-     | 23 | 0x0303  |  length |encrypted message payload|     MAC     |
-     +----+----+----+----+----+----+-----*/-/*-----+----+----*/-/*----+
-     <--- Additional Data --->|<-- TLSInnerPlainText -->|<- AEAD Tag ->
-                                     ('ipl' bytes)         (16 bytes)
-     |<---------------------->|<----------------------->|<----------->|
-                                          
+                        TlsInnerPlaintext (PL+1 bytes)
+                    |<----------------------------------->|
+                    +----+---/--*---*---/--+----+----+----+
+                    |        Handshake Message       | CT |
+                    +----+---/--*---*---/--+----+----+----+
+                    \                                     /
+                     \______   (AEAD ENCRYPTION)   ______/
+                            \                     /
+                             \                   /
+    +----+----+----+----+----+----+----*--*-----+----+--*-*--+
+    | 23 | 0x0303  |  length |encrypted message |  MAC       |
+    +----+----+----+----+----+----+----*--*-----+----+--*-*--+
+    <--- Additional Data --->|TLSInnerPlainText |  AEAD Tag  |
+                               ('ipl' bytes)      (16 bytes)
+    |<---------------------->|<---------------->|<---------->|
+
+
 ```
 
 ### TlsCiphertext
@@ -628,6 +625,22 @@ These are the only two `supported_groups` in `tlsc`.
 
 
 ![key_schedule](./images/key_schedule.jpg)
+
+
+### AEAD
+Authenticated Encryption with Associated Data (AEAD) [Rog02] has emerged as
+being the right cryptographic tool for building secure channels. AEAD provides
+both confidentiality and integrity guarantees for data.
+
+
+### Stateful AEAD
+[Requirements on AEAD Algorithm Specifications](https://datatracker.ietf.org/doc/html/rfc5116)
+
+An Authenticated Encryption algorithm MAY incorporate internal state information that is maintained between invocations of the encrypt operation, e.g., to allow for the construction of distinct values that are used as internal nonces by the algorithm.  An AEAD algorithm of this sort is called stateful.  This method could be used by an algorithm to provide good security even when the application inputs zero-length nonces.
+
+### AEADs and Secure Channel
+In [Data Is a Stream: Security of Stream-Based Channels](https://eprint.iacr.org/2017/1191.pdf), Marc Fischlin et.al.,
+note that while AEAD provides both confidentiality and integrity guarantees for data, on its own, AEAD does not constitute a secure channel. For example, in most practical situations, a secure channel should provide more than simple encryption of messages, but also guarantee detection of (and possibly recovery from) out-of-order delivery and replays of messages.
 
 
 ## References
