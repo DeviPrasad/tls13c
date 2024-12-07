@@ -77,8 +77,20 @@ macro_rules! derived_secrets {
     };
 }
 
-pub type SymKey = Vec<u8>;
-pub type IV = Vec<u8>;
+// pub type SymKey = Vec<u8>;
+struct SymKey(Vec<u8>);
+struct IV(Vec<u8>);
+
+impl From<Vec<u8>> for SymKey {
+    fn from(key: Vec<u8>) -> Self {
+        Self(key)
+    }
+}
+impl From<Vec<u8>> for IV {
+    fn from(val: Vec<u8>) -> Self {
+        Self(val)
+    }
+}
 
 #[allow(dead_code)]
 pub trait TlsCipher {
@@ -90,16 +102,16 @@ impl TryFrom<(SymKey, IV)> for TlsAes128GcmSha256Cipher {
     type Error = Error;
 
     fn try_from((key, iv): (SymKey, IV)) -> Result<TlsAes128GcmSha256Cipher, Error> {
-        if iv.len() != 12 {
+        if iv.0.len() != 12 {
             Err(Error::AEADNonceLenBad)
-        } else if key.len() != Aes128Gcm::key_size() {
+        } else if key.0.len() != Aes128Gcm::key_size() {
             Err(Error::AEADKeyLenBad)
-        } else if iv.eq(&[0; 12]) {
+        } else if iv.0.eq(&[0; 12]) {
             Err(Error::BadIV)
         } else {
-            let key = Key::<Aes128Gcm>::from_slice(&key);
+            let key = Key::<Aes128Gcm>::from_slice(&key.0);
             Ok(Self {
-                iv: *Nonce::from_slice(&iv),
+                iv: *Nonce::from_slice(&iv.0),
                 cipher: Aes128Gcm::new(key),
                 nr: 0,
             })
@@ -111,16 +123,16 @@ impl TryFrom<(SymKey, IV)> for TlsAes256GcmSha384Cipher {
     type Error = Error;
 
     fn try_from((key, iv): (SymKey, IV)) -> Result<TlsAes256GcmSha384Cipher, Error> {
-        if iv.len() != 12 {
+        if iv.0.len() != 12 {
             Err(Error::AEADNonceLenBad)
-        } else if key.len() != Aes256Gcm::key_size() {
+        } else if key.0.len() != Aes256Gcm::key_size() {
             Err(Error::AEADKeyLenBad)
-        } else if iv.eq(&[0; 12]) {
+        } else if iv.0.eq(&[0; 12]) {
             Err(Error::BadIV)
         } else {
-            let key = Key::<Aes256Gcm>::from_slice(&key);
+            let key = Key::<Aes256Gcm>::from_slice(&key.0);
             Ok(Self {
-                iv: *Nonce::from_slice(&iv),
+                iv: *Nonce::from_slice(&iv.0),
                 cipher: Aes256Gcm::new(key),
                 nr: 0,
             })
@@ -132,16 +144,16 @@ impl TryFrom<(SymKey, IV)> for TlsChaCha20Ploy1305Cipher {
     type Error = Error;
 
     fn try_from((key, nonce): (SymKey, IV)) -> Result<TlsChaCha20Ploy1305Cipher, Error> {
-        if nonce.len() != 12 {
+        if nonce.0.len() != 12 {
             Err(Error::AEADNonceLenBad)
-        } else if key.len() != ChaCha20Poly1305::key_size() {
+        } else if key.0.len() != ChaCha20Poly1305::key_size() {
             Err(Error::AEADKeyLenBad)
-        } else if nonce.eq(&[0; 12]) {
+        } else if nonce.0.eq(&[0; 12]) {
             Err(Error::BadIV)
         } else {
-            let key = Key::<ChaCha20Poly1305>::from_slice(&key);
+            let key = Key::<ChaCha20Poly1305>::from_slice(&key.0);
             Ok(Self {
-                iv: *Nonce::from_slice(&nonce),
+                iv: *Nonce::from_slice(&nonce.0),
                 cipher: ChaCha20Poly1305::new(key),
                 nr: 0,
             })
@@ -372,7 +384,7 @@ impl TlsCipherSuite for TlsChaCha20Poly1305Sha256CipherSuite {
     }
 
     fn cipher(&self, key: Vec<u8>, nonce: Vec<u8>) -> Box<dyn TlsCipher> {
-        Box::new(TlsChaCha20Ploy1305Cipher::try_from((key, nonce)).unwrap())
+        Box::new(TlsChaCha20Ploy1305Cipher::try_from((key.into(), nonce.into())).unwrap())
     }
 }
 
@@ -424,7 +436,7 @@ impl TlsCipherSuite for TlsAes128GcmSha256CipherSuite {
     }
 
     fn cipher(&self, key: Vec<u8>, nonce: Vec<u8>) -> Box<dyn TlsCipher> {
-        Box::new(TlsAes128GcmSha256Cipher::try_from((key, nonce)).unwrap())
+        Box::new(TlsAes128GcmSha256Cipher::try_from((key.into(), nonce.into())).unwrap())
     }
 }
 
@@ -477,7 +489,7 @@ impl TlsCipherSuite for TlsAes256GcmSha384CipherSuite {
     }
 
     fn cipher(&self, key: Vec<u8>, nonce: Vec<u8>) -> Box<dyn TlsCipher> {
-        Box::new(TlsAes256GcmSha384Cipher::try_from((key, nonce)).unwrap())
+        Box::new(TlsAes256GcmSha384Cipher::try_from((key.into(), nonce.into())).unwrap())
     }
 }
 
@@ -686,7 +698,7 @@ mod cipher_tests {
 
     #[test]
     fn tls_aes128gcm_sha256() {
-        let res_aead = TlsAes128GcmSha256Cipher::try_from((vec![2; 16], vec![1; 12]));
+        let res_aead = TlsAes128GcmSha256Cipher::try_from((vec![2; 16].into(), vec![1; 12].into()));
         assert!(res_aead.is_ok());
         let aead: &mut dyn TlsCipher = &mut res_aead.unwrap();
         assert!(aead
@@ -697,7 +709,7 @@ mod cipher_tests {
     #[test]
     fn tls_aes256gcm_sha384() {
         let _aes256_gcm_sha384: &dyn TlsCipherSuite = &TlsAes256GcmSha384CipherSuite::default();
-        let res_aead = TlsAes256GcmSha384Cipher::try_from((vec![2; 32], vec![1; 12]));
+        let res_aead = TlsAes256GcmSha384Cipher::try_from((vec![2; 32].into(), vec![1; 12].into()));
         assert!(res_aead.is_ok());
         let aead = res_aead.unwrap();
         assert_eq!(aead.iv.len(), 12);
@@ -705,7 +717,7 @@ mod cipher_tests {
 
     #[test]
     fn tls_chacha20poly1305_sha256() {
-        let res_aead = TlsChaCha20Ploy1305Cipher::try_from((vec![2; 32], vec![1; 12]));
+        let res_aead = TlsChaCha20Ploy1305Cipher::try_from((vec![2; 32].into(), vec![1; 12].into()));
         assert!(res_aead.is_ok());
     }
 }
