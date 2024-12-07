@@ -623,7 +623,7 @@ includes its
 ClientHello contains two shares, each in an EC group: X25519 and secp256r1.
 These are the only two `supported_groups` in `tlsc`.
 
-
+**Key Schedule**
 ![key_schedule](./images/key_schedule.jpg)
 
 
