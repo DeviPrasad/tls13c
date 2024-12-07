@@ -52,6 +52,22 @@ protocol, MLS (RFC 9420, section-16.1), recommends all MLS messages
 to be transmitted over TLS 1.3.
 
 
+### AEAD
+Authenticated Encryption with Associated Data (AEAD) [Rog02] has emerged as
+being the right cryptographic tool for building secure channels. AEAD provides
+both confidentiality and integrity guarantees for data.
+
+
+### Stateful AEAD
+[Requirements on AEAD Algorithm Specifications](https://datatracker.ietf.org/doc/html/rfc5116)
+
+An Authenticated Encryption algorithm MAY incorporate internal state information that is maintained between invocations of the encrypt operation, e.g., to allow for the construction of distinct values that are used as internal nonces by the algorithm.  An AEAD algorithm of this sort is called stateful.  This method could be used by an algorithm to provide good security even when the application inputs zero-length nonces.
+
+### AEADs and Secure Channel
+In [Data Is a Stream: Security of Stream-Based Channels](https://eprint.iacr.org/2017/1191.pdf), Marc Fischlin et.al.,
+note that while AEAD provides both confidentiality and integrity guarantees for data, on its own, AEAD does not constitute a secure channel. For example, in most practical situations, a secure channel should provide more than simple encryption of messages, but also guarantee detection of (and possibly recovery from) out-of-order delivery and replays of messages.
+
+
 ### The State Machine
 
 In part 1 we will consider the implementation of a TLS 1.3 client program.
@@ -62,7 +78,7 @@ to the interactions between *tlsc* and a TLS 1.3 compliant server. To see
 the shape of the interaction, refer to Figure 1 on page 11 of RFC 8446.
 We will also use the state machines `A.1. Client` (page 120) and
 `A.2. Server` (page 121) in Appendix A.
-![tls-one-rtt](./images/tls-one-rtt.jpg)
+
 
 
 <div id="conditional-hide-math">
@@ -104,7 +120,11 @@ Figure 1. 1-RTT Handshake without Client Authentication.
 
 While reading the diagram imagine that time progresses vertically downward
 and interaction flows in the direction of arrows.
+While reading the diagram imagine that time progresses vertically downward
+and interaction flows in the direction of arrows.
 
+In presenting the diagram above, we have reused the notational convention
+from RFC 8446 with one augmentation.
 In presenting the diagram above, we have reused the notational convention
 from RFC 8446 with one augmentation.
 
@@ -319,6 +339,8 @@ $$
 
 Using only $\rho$ as the key material, client derives TLS handshake traffic
 secrets:
+Using only $\rho$ as the key material, client derives TLS handshake traffic
+secrets:
 
 $$
     {\chi = derive\_handshake\_traffic\_secrets(\rho)}
@@ -327,13 +349,16 @@ $$
 Thanks to some neat elliptic-curve math, the client ends up with the exact
  same $\rho$ and $\chi$ as the server. The $\chi$ component is what the TLS
   spec calls `server_handshake_traffic_secret`.
+Thanks to some neat elliptic-curve math, the client ends up with the exact
+ same $\rho$ and $\chi$ as the server. The $\chi$ component is what the TLS
+  spec calls `server_handshake_traffic_secret`.
 
 </div>
 
 By the end of this message exchange, the client is equipped to exchange
 encrypted and authenticated messages with the server. Therefore, the client
-initializes its session with the message context, session ciphersuite,
-and the traffic secrets:
+ initializes its session with the message context, session ciphersuite,
+ and the traffic secrets:
 
 $$
     { E^{auth}_c = (h^c\cdot h^s, \, \tau, \, \chi) }
@@ -434,11 +459,11 @@ The same can be visualized as horizontally laid out sequence of bytes:
 ```
                     TLSCipherText Record
 
-    0   1   2    3   4   5   6                             5+length
-    +----+----+----+----+----+---+---+--*--*--*----+---+---+
-    | 23 | 0x0303  | length  |       encrypted_record      |
-    +----+----+----+----+----+---+---+--*--*--*----+---+---+
-    <----   5 bytes  --->|<---------- ciphertext ---------->
+    0    1    2    3    4    5    6                                  5+length
+    +----+----+----+----+----+----+----+--*--*----+----+---*--*-+----+
+    | 23 | 0x0303  |  length |            encrypted_record           |
+    +----+----+----+----+----+----+----+--*--*----+----+---*--*-+----+
+    <------- 5 bytes ------->|<------------ ciphertext ------------->
 
 ```
 
@@ -449,52 +474,39 @@ we name parts of the TlsCipherText record by their roles. We will show the
 two parts of `encrypted_record`: the `encrypted data` and the AEAD MAC/Tag.
 We use `ipl` to mean `inner plaintext length`, the meaning of which will
 be made clear in the next section:
-![tls_ct_rec_02](./images/tls_ct_rec_02.jpg)
-
-<div id="conditional-hide-math">
-
-```
-                The structure of TLSCipherText Record
-
-    0    1    2    3    4    5    6               5+ipl     5+length
-    +----+----+----+----+----+----+--*---*---+----+-----*---*---+
-    | 23 | 0x0303  |  length |   encrypted data   |      MAC    |
-    +----+----+----+----+----+----+--*---*---+----+-----*---*---+
-    <--- Additional Data --->|  TLSInnerPlainText |<- AEAD Tag ->
-
-    |<---------------------->|<-------------------------------->|
-            AAD                         AEAD output
-         (5 bytes)                    ('length' bytes)
-                                        ciphertext
-    |<--------------------------------------------------------->|
-                         (5+length bytes)
-```
-
-</div>
-
-
-The AEAD algorithms used in TLS 1.3 produce a MAC of length 128 bits
-(16 bytes), using 5 bytes of authenticated additional data:
-![tls_ct_rec_03](./images/tls_ct_rec_03.jpg)
-
-
-<div id="conditional-hide-math">
 
 ```
                 TLSCipherText Record showing AEAD parts
 
-    0    1    2    3    4    5    6               5+ipl      5+length
-    +----+----+----+----+----+----+--*---*---+----+-----*---*---+
-    | 23 | 0x0303  |  length |   encrypted data   |      MAC    |
-    +----+----+----+----+----+----+--*---*---+----+-----*---*---+
-    <--- Additional Data --->|  TLSInnerPlainText |<- AEAD Tag ->
-                                                     (16 bytes)
-    |<---------------------->|<-------------------------------->|
-            AAD                         AEAD output
-         (5 bytes)                   ('length' bytes)
-                                        ciphertext
-    |<--------------------------------------------------------->|
-                         (5+length bytes)
+    0    1    2    3    4    5    6                    5+ipl         5+length
+    +----+----+----+----+----+----+-----*/-/*----+----+-----*/-/*----+
+    | 23 | 0x0303  |  length |     encrypted data     |      MAC     |
+    +----+----+----+----+----+----+-----*/-/*----+----+-----*/-/*----+
+    <--- Additional Data --->|<-- TLSInnerPlainText -->|<- AEAD Tag ->
+
+    |<---------------------->|<------------------------------------->|
+            AAD                            AEAD output
+         (5 bytes)                      ('length' bytes)
+                                           ciphertext
+
+```
+
+Since the AEAD algorithms used in TLS 1.3 produce a MAC of length 128 bits
+(16 bytes), we can render more details in the diagram:
+
+```
+                TlsCipherText Record showing AEAD parts
+
+    0    1    2    3    4    5    6                    5+ipl         5+length
+    +----+----+----+----+----+----+-----*/-/*----+----+-----*/-/*----+
+    | 23 | 0x0303  |  length |      Encrypted Data    |      MAC     |
+    +----+----+----+----+----+----+-----*/-/*----+----+-----*/-/*----+
+    <--- Additional Data --->|<-- TLSInnerPlainText -->|<- AEAD Tag ->
+                                    ('ipl' bytes)         (16 bytes)
+    |<---------------------->|<------------------------------------->|
+            AAD                            AEAD output
+         (5 bytes)                      ('length' bytes)
+                                           ciphertext
 
 ```
 
@@ -516,28 +528,24 @@ It holds handshake message in the authentication phase, and subsequently,
 post-handshake, it holds application data exchanged by the peers.
 
 ```
-struct {
-    // Plaintext handshake message
-    // PL stands for plaintext length.
-    // offset 0; size = PL;
-    0:PL - opaque content[TLSPlaintext.length];
+    struct {
+        // Plaintext handshake message (or application data).
+        // PL stands for plaintext length.
+        // offset 0; size = PL;
+        0:PL - opaque content[TLSPlaintext.length];
 
-    // CT stands for ContentType.
-    // offset PL; size = 1;
-    // type = 22 if handshake, and type = 23 if application_data
-    PL:1 - ContentType type;
+        // CT stands for ContentType.
+        // offset PL; size = 1;
+        // type = 22 if handshake, and type = 23 if application_data
+        PL:1 - ContentType type;
 
-    // ZL stands for zero padding length.
-    // offset PL+1; size = ZL; 0 <= ZL.
-    PL+1:ZL  - uint8 zeroes[ZL];
-} TLSInnerPlaintext;
-// sizeof(TLSInnerPlaintext) = PL + 1 + ZL
-
-
+        // ZL stands for zero padding length.
+        // offset PL+1; size = ZL; 0 <= ZL.
+        PL+1:ZL  - uint8 zeroes[ZL];
+    } TLSInnerPlaintext;
+    // sizeof(TLSInnerPlaintext) = IPL = PL + 1 + ZL
+    // sizeof(TLSInnerPlaintext) = (TLSCiphertext.length - 16) because length(AEAD MAC) = 16
 ```
-
-Because length(AEAD MAC) = 16 bytes in the AEAD algorithms used in TLS 1.3,
-we have length(TLSInnerPlaintext) = (TLSCiphertext.length - 16).
 
 In the following discussion we will use PL to mean the size of plaintext,
 in bytes. For brevity, we use CT for ContentType.
@@ -551,17 +559,15 @@ denotes the `ContentType` of the message in `content` field. CT will have
 different values depending on the message or data being protected. Thus,
 
 ```
-
-CT = 21 - an alert message,
-CT = 22 - one of the following messages
-    - encrypted_extensions
-    - certificate
-    - certificate_verify
-    - finished
-    - new_session_ticket
-CT = 23 - application specific data
-    (i.e, HTTP payload)
-
+        CT = 21 - an alert message,
+        CT = 22 - one of the following handshake messages
+                    - encrypted_extensions
+                    - certificate
+                    - certificate_verify
+                    - finished
+                    - new_session_ticket
+        CT = 23 - application specific data
+            (i.e, HTTP request/response payload)
 ```
 
 TLS 1.3 allows encrypted records to be padded with zeroes as long as the
@@ -576,17 +582,14 @@ records or application data records.
 
 The following diagram shows the structure of TLSInnerPlaintext without
 padding zeroes, which is the most common case.
-![inner_pt_01](./images/inner_pt_01.jpg)
-
-
-<div id="conditional-hide-math">
 
 ```
 
-    0    1    2    3                            PL  PL+1
+    0    1    2    3                            PL   PL+1
     +----+----+----+----/-*--*-/-+----+----+----+----+
     |             Handshake Message             | CT |
     +----+----+----+----/-*--*-/-+----+----+----+----+
+    <---------------  Plaintext  -------------->|
     <---------------  Plaintext  -------------->|
                         (PL bytes)
 
@@ -598,23 +601,17 @@ padding zeroes, which is the most common case.
 
 ```
 
-</div>
-
 TlsInnerPlaintext with arbitrary zero padding at the end of the data block
 may be visualized thus:
-![inner_pt_02](./images/inner_pt_02.jpg)
-
-
-<div id="conditional-hide-math">
 
 ```
 
-    0                              PL   PL+1    PL+1+ZL
-    +----+----+---*---*---+----+----+----+--*---*----+
-    |    Handshake Message          | CT |  zeroes   |
-    +----+----+---*---*---+----+----+----+--*---*----+
-    <---------- Plaintext --------->|    | Optional  |
-                (PL bytes)                 (ZL bytes)
+    0    1    2    3                           PL  PL+1              PL+1+ZL
+    +----+----+----+---*---*---+----+----+----+----+--*-----*----*---+
+    |              Handshake Message          | CT |      zeroes     |
+    +----+----+----+---*---*---+----+----+----+----+-*------*----*---+
+    <--------------- Plaintext -------------->|    |<- Optional Pad ->
+                    (PL bytes)                          (ZL bytes)
 
     |<---------------------------------------------->|
                     TlsInnerPlaintext
@@ -623,39 +620,29 @@ may be visualized thus:
 
 ```
 
-</div>
-
 The following diagram shows how a TlsInnerPlaintext record without
 zero-padding is encrypted with an AEAD algorithm, and the encrypted
 message payload is
-![inner_pt_03](./images/inner_pt_03.jpg)
-
-
-<div id="conditional-hide-math">
 
 ```
 
-                TlsInnerPlaintext (PL+1 bytes)
-            |<----------------------------------->|
-            +----+---/--*---*---/--+----+----+----+
-            |        Handshake Message       | CT |
-            +----+---/--*---*---/--+----+----+----+
-            \                                    /
-             \______   (AEAD ENCRYPTION)  ______/
-                    \                    /
-                     \                  /
-+----+---+---+---+---+----+----*----*----+--*---*---+
-| 23 |0x0303 | length| encrypted message |   MAC    |
-+----+---+---+---+---+----+----*----*----+--*---*---+
-  Additional Data    | TLSInnerPlainText |   Tag    |
-                       ('ipl' bytes)      
-|<------------------>|<----------------->|<-------->|
-
+                              TlsInnerPlaintext (PL+1 bytes)
+                   |<-------------------------------------------->|
+                   +----+----+----+--/-*-*-/--+----+----+----+----+
+                   |            Handshake Message            | CT |
+                   +----+----+----+--/-*-*-/--+----+----+----+----+
+                    \                                             /
+                     \_______                             _______/
+                             \     (AEAD ENCRYPTION)     /
+                              \                         /
+     +----+----+----+----+----+----+-----*/-/*-----+----+----*/-/*----+
+     | 23 | 0x0303  |  length |encrypted message payload|     MAC     |
+     +----+----+----+----+----+----+-----*/-/*-----+----+----*/-/*----+
+     <--- Additional Data --->|<-- TLSInnerPlainText -->|<- AEAD Tag ->
+                                     ('ipl' bytes)         (16 bytes)
+     |<---------------------->|<----------------------->|<----------->|
 
 ```
-
-</div>
-
 
 ### TlsCiphertext
 TLS 1.3 employs only Authenticated Encryption with Associated Data (AEAD)
@@ -715,4 +702,3 @@ note that while AEAD provides both confidentiality and integrity guarantees for 
 
 <a id="xref-tls1.3-enc-ext"></a>
 [The Transport Layer Security (TLS) Protocol Version 1.3.](https://www.rfc-editor.org/rfc/rfc8446.html#section-5.1)
-
