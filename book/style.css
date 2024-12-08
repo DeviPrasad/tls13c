@@ -11,6 +11,26 @@
         overflow-x: hidden;
         overflow-x: clip !important;
     }
+
+    img[alt="server_hello_env_binding"] {
+        padding: 0;
+        margin-left: 0;
+        width: 102%;
+        height: 102%;
+        display: block;
+    }
+
+    img[alt="client_handshake_secret_calc"] {
+        padding: 0;
+        margin-left: 0;
+        width: 102%;
+        height: 102%;
+        display: block;
+    }
+
+    #conditional-hide-math {
+        display: none;
+    }
 }
 
 @media screen and (min-width: 340px) and (max-width: 1000px) {
@@ -26,6 +46,27 @@
         overflow-x: hidden;
         overflow-x: clip !important;
     }
+
+    img[alt="server_hello_env_binding"] {
+        padding: 0;
+        margin-left: 0;
+        width: 102%;
+        height: 102%;
+        display: block;
+    }
+
+    img[alt="client_handshake_secret_calc"] {
+        padding: 0;
+        margin-left: 0;
+        width: 102%;
+        height: 102%;
+        display: block;
+    }
+
+    #conditional-hide-math {
+        display: none;
+    }
+
 }
 
 @media screen and (min-width: 951px) and (max-width: 1800px) {
@@ -40,6 +81,12 @@
         line-height: 1.2;
         overflow-x: hidden;
         overflow-x: clip !important;
+    }
+    img[alt="server_hello_env_binding"] {
+        display: none;
+    }
+    img[alt="client_handshake_secret_calc"] {
+        display: none;
     }
 }
 
@@ -63,4 +110,8 @@ img[alt="key_schedule"] {
 
 .math {
     font-size: 0.8em;
+}
+
+#hide {
+    display: none;
 }
