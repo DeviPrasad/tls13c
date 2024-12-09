@@ -536,9 +536,8 @@ struct {
 
 ```
 
-Because length(AEAD MAC) = 16 in the AEAD algorithms used in TLS 1.3, we have
-
-$$ sizeof(TLSInnerPlaintext) = (TLSCiphertext.length - 16) $$
+Because length(AEAD MAC) = 16 bytes in the AEAD algorithms used in TLS 1.3,
+we have length(TLSInnerPlaintext) = (TLSCiphertext.length - 16).
 
 In the following discussion we will use PL to mean the size of plaintext,
 in bytes. For brevity, we use CT for ContentType.
@@ -715,4 +714,5 @@ note that while AEAD provides both confidentiality and integrity guarantees for 
 ## References
 
 <a id="xref-tls1.3-enc-ext"></a>
-The Transport Layer Security (TLS) Protocol Version 1.3. https://www.rfc-editor.org/rfc/rfc8446.html#section-4.3.1
+[[The Transport Layer Security (TLS) Protocol Version 1.3.]](https://www.rfc-editor.org/rfc/rfc8446.html#section-5.1)
+
