@@ -1,0 +1,73 @@
+
+RustCrypto: Key Encapsulation Mechanisms (KEMs)
+https://github.com/RustCrypto/KEMs
+
+
+Verified ML-KEM (Kyber) in Rust
+Karthikeyan Bhargavan, Franziskus Kiefer, Goutam Tamvada
+January 16, 2024
+https://cryspen.com/post/ml-kem-implementation/
+
+
+Verifying Libcrux's ML-KEM
+Karthikeyan Bhargavan, Lucas Franceschino, Franziskus Kiefer, Goutam Tamvada
+January 30, 2024
+https://cryspen.com/post/ml-kem-verification/
+
+
+libcrux - the formally verified crypto library
+libcrux is a formally verified cryptographic library that brings together 
+verified artifacts from different sources. It uses hacspec as a common 
+language for the specifications underlying the correctness and security 
+proofs.
+
+Please refer to the Architecture document for a detailed overview of the 
+libcrux architecture and properties and the formal verification directory 
+for details on the underlying formal proofs.
+https://github.com/cryspen/libcrux/tree/4f8e2085013d64c983d416a588d3b864e0e97082
+
+
+https://www.corsix.org/content/barrett-reduction-polynomials
+https://ridiculousfish.com/blog/posts/labor-of-division-episode-i.html
+February 15th, 2010
+
+
+Signed Barrett Reduction
+Signed Montgomery Reduction
+https://github.com/cryspen/libcrux/blob/4f8e2085013d64c983d416a588d3b864e0e97082/src/kem/kyber/arithmetic.rs#L51
+https://github.com/cryspen/libcrux/tree/4f8e2085013d64c983d416a588d3b864e0e97082/src/kem
+
+
+Class KEM
+https://docs.oracle.com/en/java/javase/23/docs/api/java.base/javax/crypto/KEM.html
+
+
+Cloudflare Research: Post-Quantum Key Agreement
+https://pq.cloudflareresearch.com/
+On essentially all domains served through Cloudflare,
+including this one, we have enabled hybrid post-quantum key agreement.
+We are also rolling out support for post-quantum key agreement 
+for connection from Cloudflare to origins. Check out our blog post
+"the state of the post-quantum Internet" for more context.
+
+You are using X25519MLKEM768 which is post-quantum secure.
+
+
+https://tldr.fail/
+The migration to post-quantum cryptography is being held back by 
+buggy servers that do not correctly implement TLS. Due to a bug,
+these servers reject connections that use post-quantum-secure
+cryptography, instead of negotiating classical cryptography 
+if they do not support post-quantum cryptography.
+...
+TLS ClientHello messages that offer post-quantum cryptography are 
+larger than classical ClientHello messages, and exceed the threshold 
+for transmission in a single packet. This means that a single call to 
+TCP read() might not return the entire ClientHello packet. This has 
+always been possible in TCP, but it is exacerbated by the larger 
+ClientHello messages. Most buggy servers are not prepared to have to 
+call read() more than once to read the entire ClientHello. This is still
+a bug even prior to the post-quantum migration, however, the bug is much 
+more commonly exposed when the larger post-quantum cryptography is in use.
+
+https://github.com/dadrian/tldr.fail/blob/main/tldr_fail_test.py

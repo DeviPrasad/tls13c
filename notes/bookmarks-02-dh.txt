@@ -1,0 +1,44 @@
+
+Understanding and verifying security of Diffie-Hellman parameters
+August 12, 2021
+https://www.redhat.com/en/blog/understanding-and-verifying-security-diffie-hellman-parameters
+
+Diffie-Hellman Primes and Keys
+https://help.bitsighttech.com/hc/en-us/articles/231642387-Diffie-Hellman-Primes-and-Keys
+
+Imperfect Forward Secrecy: How Diffie-Hellman Fails in Practice
+CCS’15, October 12–16, 2015, Denver, Colorado, USA.
+https://weakdh.org/imperfect-forward-secrecy-ccs15.pdf
+
+
+Are Strong Primes Needed for RSA
+Ronald L Rivest, Robert D Silvermany. November 1999
+https://people.csail.mit.edu/rivest/pubs/RS01.version-1999-11-22.pdf
+
+
+Encryption in groups of unknown order
+Posted on 25 August 2021 by John
+https://www.johndcook.com/blog/2021/08/25/unknown-order/
+
+
+https://fiona.onl/en/insecure_generators.html
+On Generators of Diffie-Hellman-Groups
+
+
+Diffie-Hellman Parameter Check: when g = 2, must p ≡ 11 (mod 24)?
+https://crypto.stackexchange.com/questions/12961/diffie-hellman-parameter-check-when-g-2-must-p-%e2%89%a1-11-mod-24
+
+Safe primes subgroup in Diffie–Hellman key exchange
+https://crypto.stackexchange.com/questions/108254/safe-primes-subgroup-in-diffie-hellman-key-exchange
+
+
+How to get the order of a group generator in DH?
+https://crypto.stackexchange.com/questions/87137/how-to-get-the-order-of-a-group-generator-in-dh
+
+
+Decisional Diffie-Hellman: compute Legendre symbol of g^ab from g^a and g^b?
+https://crypto.stackexchange.com/questions/31378/decisional-diffie-hellman-compute-legendre-symbol-of-gab-from-ga-and-g
+Because (I assume) g is a generator, it is not a square (prove this), 
+so its Legendre symbol is −1. And hence, the Legendre symbols of 
+g^a and g^b leak the parities or 𝑎and b. Hence they leak the parity of ab, 
+which leaks the Legendre symbol of g^ab.

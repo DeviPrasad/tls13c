@@ -1,0 +1,61 @@
+
+ChaCha20 and Poly1305 for IETF Protocols
+https://www.rfc-editor.org/rfc/rfc8439.html
+June 2018
+
+
+Usage Limits on AEAD Algorithms
+https://www.ietf.org/archive/id/draft-irtf-cfrg-aead-limits-09.html
+Expires:13 April 2025
+
+An Interface and Algorithms for Authenticated Encryption
+https://www.rfc-editor.org/rfc/rfc5116.html
+January 2008
+
+
+Useful Cryptography Resources
+https://blog.cryptographyengineering.com/useful-cryptography-resources/
+
+
+Practical Challenges with AES-GCM and the need for a new cipher
+https://csrc.nist.gov/csrc/media/Events/2023/third-workshop-on-block-cipher-modes-of-operation/documents/accepted-papers/Practical%20Challenges%20with%20AES-GCM.pdf
+2024
+
+Limits on Authenticated Encryption Use in TLS
+https://eprint.iacr.org/2024/051.pdf
+Atul Luykx and Kenneth G. Paterson
+
+US Secure Hash Algorithms (SHA and SHA-based HMAC and HKDF)
+https://www.rfc-editor.org/rfc/pdfrfc/rfc6234.txt.pdf
+
+HMAC-based Extract-and-Expand Key Derivation Function (HKDF)
+https://www.rfc-editor.org/rfc/pdfrfc/rfc5869.txt.pdf
+
+Using HMAC-SHA-256, HMAC-SHA-384, and HMAC-SHA-512 with IPsec
+https://www.rfc-editor.org/rfc/rfc4868.html
+2007
+
+HMAC: Keyed-Hashing for Message Authentication
+https://www.rfc-editor.org/rfc/rfc2104
+1997 Updated by: 6151 (see below)
+
+Updated Security Considerations for the MD5 Message-Digest and the HMAC-MD5 Algorithms
+https://www.rfc-editor.org/rfc/rfc6151
+2011 (updates 2104 - see above)
+
+An Interface and Algorithms for Authenticated Encryption
+https://www.rfc-editor.org/rfc/pdfrfc/rfc5116.txt.pdf
+D. McGrew, Jan 2008
+
+
+Do all AEAD implementations use symmetric key ciphers in practice?
+For example, NaCl has an API for public-key authenticated encryption,
+(https://nacl.cr.yp.to/box.html) based on security notions by
+Jee Hea An 2001. The construction is based on public-key encryption and MACs.
+https://crypto.stackexchange.com/questions/83494/do-all-aead-implementations-use-symmetric-key-ciphers-in-practice
+https://nacl.cr.yp.to/box.html
+
+Paper 2001/079
+Authenticated Encryption in the Public-Key Setting: Security Notions and Analyses
+https://eprint.iacr.org/2001/079
+

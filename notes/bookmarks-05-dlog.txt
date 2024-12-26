@@ -1,0 +1,19 @@
+
+An Improved Algorithm for Computing Logarithms over GP(p) and Its Cryptographic Significance
+STEPHEN C. POHLIG AND MARTIN E. HELLMAN
+https://www-ee.stanford.edu/~hellman/publications/28.pdf
+
+
+https://www.cryptologie.net/article/196/pohlig-hellman-algorithm/
+Pohlig-Hellman Algorithm
+David Wong blog post posted December 2014
+
+
+Pohlig–Hellman algorithm for computing discrete logarithms
+https://stackoverflow.com/questions/2569776/pohlig-hellman-algorithm-for-computing-discrete-logarithms
+
+
+Cryptography Knowledge Area
+Version 1.0.1
+https://www.cybok.org/media/downloads/Cryptography_v1.0.1.pdf
+
