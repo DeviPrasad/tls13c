@@ -1,0 +1,20 @@
+
+Cryptography 101: Ring Learning With Errors
+Frank Mangone
+https://medium.com/thecapital/cryptography-101-ring-learning-with-errors-ff2708a8a530
+
+
+Python and Crypto: Learning With Errors (LWE) and Ring LWE
+https://asecuritysite.com/public/lwe_ring.pdf
+
+
+On Ideal Lattices and Learning with Errors Over Rings
+Vadim Lyubashevsky, Chris Peikert, Oded Regev
+June 25, 2013
+https://eprint.iacr.org/2012/230.pdf
+
+
+
+Cryptography 101: STARKs
+Frank Mangone
+https://medium.com/@francomangone18/cryptography-101-starks-df79507f98ea

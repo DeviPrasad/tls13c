@@ -714,5 +714,5 @@ note that while AEAD provides both confidentiality and integrity guarantees for 
 ## References
 
 <a id="xref-tls1.3-enc-ext"></a>
-[[The Transport Layer Security (TLS) Protocol Version 1.3.]](https://www.rfc-editor.org/rfc/rfc8446.html#section-5.1)
+[The Transport Layer Security (TLS) Protocol Version 1.3.](https://www.rfc-editor.org/rfc/rfc8446.html#section-5.1)
 

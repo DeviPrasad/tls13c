@@ -24,7 +24,6 @@ https://www.johndcook.com/blog/2021/08/25/unknown-order/
 https://fiona.onl/en/insecure_generators.html
 On Generators of Diffie-Hellman-Groups
 
-
 Diffie-Hellman Parameter Check: when g = 2, must p ≡ 11 (mod 24)?
 https://crypto.stackexchange.com/questions/12961/diffie-hellman-parameter-check-when-g-2-must-p-%e2%89%a1-11-mod-24
 
@@ -42,3 +41,7 @@ Because (I assume) g is a generator, it is not a square (prove this),
 so its Legendre symbol is −1. And hence, the Legendre symbols of 
 g^a and g^b leak the parities or 𝑎and b. Hence they leak the parity of ab, 
 which leaks the Legendre symbol of g^ab.
+
+
+How does the Legendre symbol reveal if g^a is odd or even for Finite Field Diffie-Hellman
+https://crypto.stackexchange.com/questions/108268/how-does-the-legendre-symbol-reveal-if-ga-is-odd-or-even-for-finite-field-dif
