@@ -1,7 +1,12 @@
+<<<<<<< HEAD
 @media (min-device-width: 320px) and (max-device-width: 479px) {
 
     html,
     body {
+=======
+@media screen and (min-width: 300px) and (max-width: 400px) {
+    html, body {
+>>>>>>> a60dc55 (Media queries to fix some rendering defects.)
         width: 96%;
         margin-left: 2%;
         margin-right: 2%;
@@ -11,6 +16,7 @@
         overflow-x: hidden;
         overflow-x: clip !important;
     }
+<<<<<<< HEAD
 
     img[alt="tls-one-rtt"] {
         padding: 0;
@@ -105,6 +111,12 @@
 
     html,
     body {
+=======
+}
+
+@media screen and (min-width: 401px) and (max-width: 800px) {
+    html, body {
+>>>>>>> a60dc55 (Media queries to fix some rendering defects.)
         width: 90%;
         margin-left: 5%;
         margin-right: 5%;
@@ -114,6 +126,7 @@
         overflow-x: hidden;
         overflow-x: clip !important;
     }
+<<<<<<< HEAD
 
     img[alt="tls-one-rtt"] {
         padding: 0;
@@ -213,10 +226,22 @@
         margin-right: 5%;
         padding: 0;
         font-size: 1.1em;
+=======
+}
+
+@media="screen and (min-width: 801px) and (max-width: 1300px) {
+    html, body {
+        width: 70%;
+        margin-left: 15%;
+        margin-right: 15%;
+        padding: 0;
+        font-size: 1.2em;
+>>>>>>> a60dc55 (Media queries to fix some rendering defects.)
         line-height: 1.2;
         overflow-x: hidden;
         overflow-x: clip !important;
     }
+<<<<<<< HEAD
 
     img[alt="tls-one-rtt"] {
         padding: 0;
@@ -372,6 +397,8 @@
     #conditional-hide-math {
         display: block;
     }
+=======
+>>>>>>> a60dc55 (Media queries to fix some rendering defects.)
 }
 
 img[alt="client_hello_layout"] {
@@ -395,7 +422,10 @@ img[alt="key_schedule"] {
 .math {
     font-size: 0.8em;
 }
+<<<<<<< HEAD
 
 #hide {
     display: none;
 }
+=======
+>>>>>>> a60dc55 (Media queries to fix some rendering defects.)
